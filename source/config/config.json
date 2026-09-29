@@ -1,6 +1,6 @@
 {
-    "github" : {
-        "end_point" : "https://api.github.com/advisories",
-        "max_retry" : 3
+    "github": {
+        "end_point": "https://api.github.com/advisories",
+        "max_retry": 3
     }
 }
