@@ -1,10 +1,22 @@
 ## 중요!!!! 형상관리 방법
-1. main 기준 개인 브랜치 제작 (브랜치 망가지지 않았으면 한 번만 하면 됨)
+1. 개인 브랜치 제작(1회성)
+    git switch -c [원하는 브랜치명]
 2. 개인 브랜치에서 작업 후 커밋
+    git add .
+    git commit -m "작업 내용"
+    git push
 3. main 으로 이동해 fetch & pull
+    git switch main
+    git fetch origin
+    git pull origin main
 4. main 내용을 개인 브랜치로 merge
+    git switch [개인 브랜치명]
+    git merge main
 5. 개인브랜치 충돌 해소 후 커밋, 푸쉬 (공동 작업자 소스 지우지 말고 물어볼 것!)
 6. main 으로 머지
+    git switch main
+    git merge [원하는 브랜치명]
+    git push origin main
 
 ## 프로젝트 로컬 구동
 
