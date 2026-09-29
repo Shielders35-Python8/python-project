@@ -42,6 +42,47 @@ python main.py
 
 ```
 
+## 웹 대시보드 실행
+
+가상환경을 활성화한 뒤 **프로젝트 루트**에서 실행합니다.
+
+```bash
+python -m pip install -r requirements.txt
+python -m source.web.app
+```
+
+브라우저에서 http://127.0.0.1:5000 에 접속합니다. 종료는 `Ctrl+C`입니다.
+`python source/web/app.py`로 직접 실행할 수도 있습니다.
+
+코드 수정 시 자동으로 재시작하는 개발 모드는 다음과 같습니다.
+
+```bash
+python -m flask --app source.web.app run --debug
+# 다른 포트가 필요하면 --port 5001 추가
+```
+
+웹 구성은 [Flask 공식 Quickstart](https://flask.palletsprojects.com/en/stable/quickstart/)의
+라우트·템플릿·정적 파일 구조를 따릅니다.
+
+```text
+source/web/
+├── app.py                  # Flask 앱 생성, 화면 및 API 라우트
+├── templates/index.html    # 대시보드 화면 (Jinja2)
+└── static/css/style.css    # 대시보드 스타일
+```
+
+| 경로 | 메서드 | 용도 |
+| --- | --- | --- |
+| `/` | GET | 실행 상태와 분석 결과를 표시할 기본 화면 |
+| `/api/health` | GET | 웹 서버 응답 확인 |
+| `/api/results` | GET | 결과 조회 연결 지점. 현재 `not_connected`와 빈 목록 반환 |
+| `/api/run` | POST | 실행 연결 지점. 현재 HTTP 501과 `not_implemented` 반환 |
+
+현재는 웹 기본 구성만 제공합니다. 실행 버튼은 비활성 상태이며 공지 수집·분석·저장이나
+자정 스케줄러가 자동 실행되지는 않습니다. `app.py`의 TODO 위치에 실행 및 조회 함수를
+연결하고, 화면에 전달할 결과는 `source/processor.py`의 반환 형식을 사용합니다.
+화면의 미집계 값은 `—`로 표시합니다.
+
 # 🛡️ **SK Shieldus Rookies Mini Project**
 
 > 
