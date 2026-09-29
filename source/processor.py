@@ -1,6 +1,6 @@
 import re
 
-from source.common.notion.notion import get_database_rows
+from source.common.notion.notion import get_database_rows, update_database_rows
 from source.config.config import get_env
 
 
@@ -77,4 +77,14 @@ def evaluate_impact(start_at, end_at):
                     {"advisory": advisory, "service_package": service_package}
                 )
 
-    return matches
+    # 4. 일치하는 경우에 해당하는 service_package의 'vulnerability' 컬럼을 'severity'컬럼의 값으로 업데이트 한다.
+    # common\notion\notion.py의 def update_database_rows()를 사용한다.
+    for match in matches:
+        update_database_rows(
+            page_id=match["service_package"]["page_id"],
+            properties={
+                "vulnerability": {
+                    "select": {"name": match["advisory"]["severity"]}
+                }
+            },
+        )

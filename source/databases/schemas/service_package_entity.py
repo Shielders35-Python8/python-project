@@ -47,7 +47,7 @@ def build_service_package_schema(service_data_source_id: str) -> dict:
         "package_name": {"title": {}},
         "package_version": {"rich_text": {}},
         # 기본값은 행 생성 시 {"select": {"name": "safe"}}로 지정한다.
-        "vulnerabliity": {
+        "vulnerability": {
             "select": {
                 "options": [
                     {"name": "safe"},
