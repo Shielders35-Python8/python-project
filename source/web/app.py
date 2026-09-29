@@ -8,7 +8,7 @@ from flask import Flask, jsonify, render_template
 
 
 def create_app() -> Flask:
-    """웹 앱을 생성한다. 서버 시작 시 수집이나 스케줄러를 실행하지 않는다."""
+    """웹 앱을 생성한다. 서버 시작 시 공지 수집을 실행하지 않는다."""
     app = Flask(__name__)
     app.json.ensure_ascii = False
 
@@ -34,7 +34,7 @@ def create_app() -> Flask:
     @app.post("/api/run")
     def run_project():
         # TODO: 수집 → 분석 → 저장 작업을 연결한다.
-        # 장시간 작업이나 무한 루프 스케줄러는 요청 안에서 직접 실행하지 않는다.
+        # 장시간 작업은 요청 안에서 직접 실행하지 않는다.
         return jsonify(
             status="not_implemented",
             message="프로젝트 실행 기능이 아직 연결되지 않았습니다.",
