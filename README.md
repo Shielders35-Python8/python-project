@@ -10,8 +10,8 @@
 
 ```bash
 ## git bash
-git clone <이 프로젝트>
-cd <프로젝트 폴더 경로>
+git clone https://github.com/Shielders35-Python8/python-project.git
+cd python-project
 
 # window
 python -m venv .venv
@@ -20,9 +20,14 @@ python -m venv .venv
 # mac or linux
 python3 -m venv .venv
 source .venv/bin/activate
-# pip install python-dotenv
+
+
+pip install requests
+pip install python-dotenv
 pip install -r requirements.txt
+
 python main.py
+
 ```
 
 # 🛡️ **SK Shieldus Rookies Mini Project**

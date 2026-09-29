@@ -6,7 +6,7 @@ def get_config(key):
     with open("source/config/config.json", "r", encoding="utf-8") as file:
         try:
             config_data = json.load(file)
-            print(config_data.get(key))
+            return config_data
         except Exception as e:
             print("Config Load Error >> ", e)
     
