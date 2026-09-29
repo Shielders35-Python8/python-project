@@ -117,7 +117,7 @@ def get_advisories():
                 })
 
         # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
-        make_response_json(return_advisories)
+        # make_response_json(return_advisories)
 
     except Exception as e:
         print("get advisories server error > get_advisories > ", e)
