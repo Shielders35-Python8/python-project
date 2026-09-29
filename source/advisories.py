@@ -13,10 +13,12 @@ def make_response_json(return_advisories):
 
         Args: return_advisories(dict)
     """
-    with open ("source/example/advisories_response.json", "w", encoding="utf-8") as file:
-        json.dump(return_advisories, file, indent=4)
-        print("저장 완료 : advisories_response.json")
-
+    try:
+        with open ("source/example/advisories_response.json", "w", encoding="utf-8") as file:
+            json.dump(return_advisories, file, indent=4)
+            print("저장 완료 : advisories_response.json")
+    except Exception as e:
+        print("get advisories return value save error > make_response_json > ", e)
 
 def get_connection(end_point, retry):
     """
@@ -53,6 +55,8 @@ def get_connection(end_point, retry):
         
         # 예외 상황 log 를 자세히 남겨야 파악 및 조치가 편함
         except Exception as e:
+            print("get advisories connection error > get_connection")
+
             if isinstance(e, requests.exceptions.HTTPError):
                 status = e.response.status_code
 
@@ -79,41 +83,45 @@ def get_advisories():
 
         Return:  return_advisories(list(dict))
     """
-
-    # config 에 end_point 가 없을 경우 runtime error 리턴
-    config = get_config("github")
-    end_point = config.get("end_point")
-    if not end_point: raise RuntimeError("github advisory endpoint 확인 필요")
-
-    # 재시도 횟수
-    retry = config.get("max_retry")
-
-    # github 통신
-    response = get_connection(end_point, retry)
-
     return_advisories = []
-    # None 검사 후 data parse logic 진행
-    if response:
-        advisories = response.json()
-        for advisory in advisories:
+    try : 
 
-            ghsa_id = advisory.get("ghsa_id")
-            
-            return_advisories.append({
-                "id": ghsa_id,
-                "source": "github_advisory",
-                "title": advisory.get("summary", ghsa_id),
-                "url": advisory.get("html_url", f"https://github.com/advisories/{ghsa_id}"),
-                "published": advisory.get("published_at"),
-                "updated_at": advisory.get("updated_at"),
-                "severity": advisory.get("severity"),
-                "summary": (advisory.get("description") or ""),
-                "cve_id": advisory.get("cve_id"),
-            })
+        # config 에 end_point 가 없을 경우 runtime error 리턴
+        config = get_config("github")
+        end_point = config.get("end_point")
+        if not end_point: raise RuntimeError("github advisory endpoint 확인 필요")
 
-    # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
-    # make_response_json(return_advisories)
+        # 재시도 횟수
+        retry = config.get("max_retry")
 
+        # github 통신
+        response = get_connection(end_point, retry)
+
+        # None 검사 후 data parse logic 진행
+        if response:
+            advisories = response.json()
+            for advisory in advisories:
+
+                ghsa_id = advisory.get("ghsa_id")
+                
+                return_advisories.append({
+                    "id": ghsa_id,
+                    "source": "github_advisory",
+                    "title": advisory.get("summary", ghsa_id),
+                    "url": advisory.get("html_url", f"https://github.com/advisories/{ghsa_id}"),
+                    "published": advisory.get("published_at"),
+                    "updated_at": advisory.get("updated_at"),
+                    "severity": advisory.get("severity"),
+                    "summary": (advisory.get("description") or ""),
+                    "cve_id": advisory.get("cve_id"),
+                })
+
+        # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
+        make_response_json(return_advisories)
+
+    except Exception as e:
+        print("get advisories server error > get_advisories > ", e)
+    
     return return_advisories
     
 
