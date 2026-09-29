@@ -31,7 +31,7 @@ def get_connection(end_point, retry):
     headers = {
         "Accept": "application/vnd.github+json"
     }
-
+    
     # 날짜 필터 없이 전체 Global Advisory 중 최신 게시 순 100 건 조회
     params = {
         "sort": "published",
@@ -51,6 +51,7 @@ def get_connection(end_point, retry):
 
             response.raise_for_status()
 
+            # 연동 성공 시 바로 응답 리턴하여 반복문을 빠져나감
             return response
         
         # 예외 상황 log 를 자세히 남겨야 파악 및 조치가 편함
@@ -62,12 +63,12 @@ def get_connection(end_point, retry):
 
                 if status in (400, 401, 403, 404) :
                     # 해당 에러들의 경우 client error 이므로 연동 정보 재확인이 필요하여 break
-                    print(f"Client Error (retry : {attempt + 1}/3)")
+                    print(f"{status} Client Error (retry : {attempt + 1}/3)")
                     break
                 elif status >= 500:
-                    print(f"Github Server Error (retry : {attempt + 1}/3)")
+                    print(f"{status} Github Server Error (retry : {attempt + 1}/3)")
                 else:
-                    print(f"Unexpected Http Error (retry : {attempt + 1}/3)")
+                    print(f"{status} Unexpected Http Error (retry : {attempt + 1}/3)")
 
             elif isinstance(e, requests.exceptions.ConnectionError):
                 print(f"Github Server Connection Error (retry : {attempt + 1}/3)")
