@@ -15,7 +15,7 @@ def evaluate_impact(advisories: list[dict], service_packages: list[dict]) -> lis
     # 팀원 구현 후 호출하는 쪽에서 조회 결과를 인자로 전달한다.
     # advisories = notion_repository.get_advisories()
     # service_packages = notion_repository.get_service_packages()
-
+    #
     results = []
     for advisory in advisories:
         target_name = advisory["package_name"]
