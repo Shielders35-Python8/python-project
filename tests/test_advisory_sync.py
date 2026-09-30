@@ -190,12 +190,18 @@ class AdvisorySyncTests(unittest.TestCase):
         self.get.assert_not_called()
 
     def test_pages_show_form_without_starting_collection(self):
-        for path in ("/", "/advisories/list", "/run-status"):
+        for path in ("/", "/advisories/list"):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 200)
             self.assertIn('id="sync-start"', response.text)
             self.assertIn('id="sync-end"', response.text)
             self.assertIn("신규 공지 가져오기", response.text)
+        status_page = self.client.get("/run-status")
+        self.assertEqual(status_page.status_code, 200)
+        self.assertNotIn("data-sync-form", status_page.text)
+        self.assertNotIn("신규 공지 가져오기", status_page.text)
+        self.assertIn("data-run-button", status_page.text)
+        self.assertIn("실행 기록", status_page.text)
         self.get.assert_not_called()
 
 

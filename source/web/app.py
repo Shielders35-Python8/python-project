@@ -18,7 +18,7 @@ from source.common.notion.notion import NotionClient
 from source.common.notion.query_policy import NotionQueryPolicy
 from source.common.slack.notifications import init_app
 from source.config.config import get_env
-from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
+from source.services.advisory_analysis import analyze_advisories, validate_advisory_period
 from source.services.processor import evaluate_impact
 from source.services.advisory_sync import sync_advisories_to_notion
 from source.web.advisory_sync_runs import AdvisorySyncRuns
@@ -66,12 +66,6 @@ def fetch_saved_rows(env_key: str, query_policy=None) -> list[dict]:
         return client.get_database_rows(data_source_id=data_source_id)
     finally:
         client.client.close()
-
-
-def get_saved_advisory_count() -> int:
-    """Notion의 패키지·버전별 행을 공지 ID 기준으로 중복 집계하지 않는다."""
-    advisories = get_saved_rows("NOTION_ADVISORIES_DATA_SOURCE_ID")
-    return len({advisory_key(row, index) for index, row in enumerate(advisories)})
 
 
 def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
@@ -212,9 +206,11 @@ def create_app(config=None) -> Flask:
         title, description = page_content[active_page]
         advisory_count = None
         advisory_error = None
+        analysis = None
         if active_page == "dashboard":
             try:
-                advisory_count = get_saved_advisory_count()
+                analysis = get_saved_advisory_analysis()
+                advisory_count = analysis["summary"]["advisory_count"]
             except Exception as error:
                 app.logger.warning("Notion 공지 조회 실패: %s", type(error).__name__)
                 advisory_error = "Notion 공지 조회 실패 · 새로고침해 주세요."
@@ -244,6 +240,7 @@ def create_app(config=None) -> Flask:
             result_start=(page - 1) * page_size,
             advisory_count=advisory_count,
             advisory_error=advisory_error,
+            analysis=analysis,
             active_page=active_page,
             page_title=title,
             page_description=description,

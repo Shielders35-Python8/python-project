@@ -220,7 +220,10 @@ class CachedDashboardRoutesTests(unittest.TestCase):
         wait_until(lambda: len(self.calls) == 3)
         self.assertCountEqual(self.calls, self.data)
         self.warm()
-        self.assertIn("Cached package", self.client.get("/").text)
+        html = self.client.get("/").text
+        self.assertIn('aria-label="관리 패키지 1개">1</p>', html)
+        self.assertIn('id="severity-heading"', html)
+        self.assertNotIn('id="results-heading"', html)
 
     def test_tabs_filters_and_pagination_share_one_snapshot(self):
         self.warm()
