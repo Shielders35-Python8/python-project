@@ -51,6 +51,10 @@
       <script src="{{ url_for('static', filename='js/dashboard-cache.js') }}" defer></script>
       {% endif %}
 
+      {% if active_page in ['dashboard', 'security_advisories', 'run_status'] %}
+      {% include 'advisory_sync.html' %}
+      {% endif %}
+
       {% if cache_loading|default(false) %}
       <section class="analysis-empty" aria-busy="true" aria-label="데이터 로딩">
         <h2>데이터를 불러오는 중입니다.</h2>
@@ -290,6 +294,10 @@
       </footer>
     </main>
     <script id="analysis-state" type="application/json">{{ analysis_state|tojson }}</script>
+    <script id="sync-state" type="application/json">{{ sync_state|tojson }}</script>
+    <script src="{{ url_for('static', filename='js/advisory-sync.js') }}" defer
+            data-sync-url="{{ url_for('collect_advisories') }}" data-status-url="{{ url_for('advisory_sync_status') }}"
+            data-refresh-advisories="{{ 'true' if active_page in ['dashboard', 'security_advisories', 'advisories'] else 'false' }}"></script>
     <script src="{{ url_for('static', filename='js/analysis-run.js') }}" defer
             data-run-url="{{ url_for('run_project') }}" data-status-url="{{ url_for('analysis_run_status') }}"
             data-refresh-results="{{ 'true' if active_page in ['dashboard', 'results'] else 'false' }}"></script>

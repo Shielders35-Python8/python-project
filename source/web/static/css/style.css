@@ -61,6 +61,18 @@ h1 { font-size: clamp(28px, 3.7vw, 52px); font-weight: 800; letter-spacing: -0.0
 .run-button:not(:disabled):hover { background: #a83709; }
 .run-feedback { padding: 14px 0; font-size: 12px; }
 .run-feedback .muted { margin-top: 4px; }
+.advisory-sync { padding: 22px 0; margin-bottom: 26px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--line); }
+.advisory-sync .section-header { margin-bottom: 8px; }
+.advisory-sync h2 { font-size: 20px; }
+.sync-status { color: var(--accent); font-size: 12px; font-weight: 700; }
+.sync-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 16px; }
+.sync-date { flex: 1 1 160px; max-width: 230px; min-width: 0; }
+.sync-date label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 700; }
+.sync-date input { width: 100%; min-width: 0; min-height: 45px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; }
+.sync-form .run-button { flex: 1 1 180px; max-width: 230px; }
+.sync-feedback { margin-top: 14px; font-size: 12px; }
+.sync-feedback p + p { margin-top: 4px; }
+.sync-error { margin-top: 12px; color: #a83709; font-size: 12px; }
 [hidden] { display: none !important; }
 .run-action p { margin-top: 5px; color: var(--muted); font-size: 10px; text-align: center; }
 .run-detail { display: flex; align-items: center; gap: 13px; border-left: 1px solid var(--line); padding: 4px 22px; min-height: 47px; }

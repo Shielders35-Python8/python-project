@@ -106,20 +106,31 @@ def _to_notion_properties(advisory: dict) -> dict:
 
 
 @notify_errors("보안 공지 Notion 적재")
-def sync_advisories_to_notion(dates=None) -> dict:
+def sync_advisories_to_notion(dates=None, *, progress=None, query_policy=None) -> dict:
     """GitHub advisories 를 조회해 Notion advisories DB 에 적재하고 결과 요약을 리턴"""
-    notion = NotionClient()
     data_source_id = get_env("NOTION_ADVISORIES_DATA_SOURCE_ID")
-
-    advisories = get_advisories(dates or [])
-    advisories = _filter_exist_advisories(notion, data_source_id, advisories)
-    inserted, failed = 0, []
-    print("========================== 적재 시작 =========================")
-    for advisory in advisories:
-        try:
-            notion.create_database_row(data_source_id, _to_notion_properties(advisory))
-            inserted += 1
-        except Exception as e:
-            failed.append({"id": advisory.get("id"), "error": str(e)})
-    print("========================== 적재 완료 =========================")
-    return {"fetched": len(advisories), "inserted": inserted, "failed": failed}
+    if not data_source_id or not data_source_id.strip():
+        raise ValueError("Notion 공지 데이터 소스 ID가 필요합니다.")
+    progress = progress or (lambda **values: None)
+    options = {"timeout_ms": 15_000, "query_policy": query_policy} if query_policy else {}
+    notion = NotionClient(**options)
+    try:
+        progress(stage="fetching", message="GitHub 공지를 가져오고 있습니다.")
+        advisories = get_advisories(dates or [], raise_on_error=True)
+        fetched = len(advisories)
+        progress(stage="deduplicating", message="Notion에 저장된 공지와 중복을 확인하고 있습니다.", fetched=fetched)
+        advisories = _filter_exist_advisories(notion, data_source_id, advisories)
+        skipped = fetched - len(advisories)
+        inserted, failed = 0, []
+        progress(stage="saving", message="새 공지를 Notion에 저장하고 있습니다.",
+                 skipped=skipped, total=len(advisories))
+        for advisory in advisories:
+            try:
+                notion.create_database_row(data_source_id, _to_notion_properties(advisory))
+                inserted += 1
+            except Exception as error:
+                failed.append({"id": advisory.get("id"), "error": str(error)})
+            progress(inserted=inserted, failed_count=len(failed))
+        return {"fetched": fetched, "skipped": skipped, "inserted": inserted, "failed": failed}
+    finally:
+        notion.client.close()

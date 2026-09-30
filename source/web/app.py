@@ -5,6 +5,7 @@
 """
 
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, current_app, g, has_app_context, jsonify, render_template, request, url_for
@@ -19,6 +20,8 @@ from source.common.slack.notifications import init_app
 from source.config.config import get_env
 from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
 from source.services.processor import evaluate_impact
+from source.services.advisory_sync import sync_advisories_to_notion
+from source.web.advisory_sync_runs import AdvisorySyncRuns
 from source.web.analysis_runs import AnalysisRuns
 from source.web.dashboard_data import (
     RESULT_SEVERITY_FILTERS, build_saved_package_results, filter_saved_package_results,
@@ -101,6 +104,11 @@ def create_app(config=None) -> Flask:
         lambda: cache.invalidate((PACKAGES,)),
     )
     app.extensions["analysis_runs"] = runs
+    sync_runs = AdvisorySyncRuns(
+        lambda dates, progress: sync_advisories_to_notion(dates, progress=progress, query_policy=query_policy),
+        lambda: cache.invalidate((ADVISORIES,)),
+    )
+    app.extensions["advisory_sync_runs"] = sync_runs
 
     @app.before_request
     def prepare_saved_data():
@@ -123,11 +131,15 @@ def create_app(config=None) -> Flask:
 
     @app.context_processor
     def saved_data_context():
+        today = datetime.now(timezone.utc).date()
         values = {key: request.args[key] for key in ("severity", "page", "started_at", "ended_at")
                   if key in request.args}
         values["refresh"] = "1"
         return {
             "analysis_state": runs.snapshot(),
+            "sync_state": sync_runs.snapshot(),
+            "sync_default_start": (today - timedelta(days=6)).isoformat(),
+            "sync_default_end": today.isoformat(),
             "cache_state": getattr(g, "cache_state", None),
             "cache_page": getattr(g, "cache_page", None),
             "cache_refresh_url": url_for(request.endpoint, **values) if request.endpoint in ENDPOINT_PAGES else None,
@@ -135,7 +147,9 @@ def create_app(config=None) -> Flask:
 
     @app.after_request
     def saved_data_headers(response):
-        if getattr(g, "cache_page", None) or request.endpoint in ("cache_status", "analysis_run_status", "run_project"):
+        if getattr(g, "cache_page", None) or request.endpoint in (
+            "cache_status", "analysis_run_status", "run_project", "collect_advisories", "advisory_sync_status",
+        ):
             response.headers["Cache-Control"] = "no-store"
             if response.is_json and getattr(g, "cache_state", None):
                 body = response.get_json()
@@ -357,6 +371,33 @@ def create_app(config=None) -> Flask:
     @app.get("/api/run-status")
     def analysis_run_status():
         return jsonify(**runs.snapshot())
+
+    @app.post("/api/advisories/sync")
+    def collect_advisories():
+        origin = request.headers.get("Origin")
+        if request.headers.get("Sec-Fetch-Site") == "cross-site" or (origin and origin != request.host_url.rstrip("/")):
+            return jsonify(status="error", message="같은 대시보드에서 공지를 수집해 주세요."), 403
+        if not request.is_json:
+            return jsonify(status="error", message="JSON 형식의 실행 요청이 필요합니다."), 415
+        payload = request.get_json(silent=True)
+        if request.args or not isinstance(payload, dict) or set(payload) != {"started_at", "ended_at"}:
+            return jsonify(status="error", message="수집 시작일과 종료일을 입력해 주세요."), 400
+        try:
+            start, end = validate_advisory_period(**payload)
+            if start is None or end is None:
+                raise ValueError("수집 시작일과 종료일을 모두 입력해 주세요.")
+        except ValueError as error:
+            return jsonify(status="error", message=str(error)), 400
+        try:
+            started, run = sync_runs.start(start.isoformat(), end.isoformat())
+        except Exception as error:
+            app.logger.warning("공지 수집 시작 실패: %s", type(error).__name__)
+            return jsonify(status="error", message="수집을 시작하지 못했습니다. 잠시 후 다시 실행해 주세요."), 503
+        return jsonify(status="accepted" if started else "busy", run=run), 202 if started else 409
+
+    @app.get("/api/advisories/sync-status")
+    def advisory_sync_status():
+        return jsonify(**sync_runs.snapshot())
 
     return app
 

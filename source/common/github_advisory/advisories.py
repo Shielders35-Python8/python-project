@@ -123,9 +123,10 @@ def get_connection(end_point, retry, dates=[]):
 # 오늘 할 일 1. 날짜 조건 추가(str), 페이징 하지말고 100건만, resturn 값 정제
 # cvss 제거
 # 노션 database 에서 제공하는 기능적 한계로 인해 flat 하게 넘김
-def get_advisories(dates=[]):
+def get_advisories(dates=None, *, raise_on_error=False):
     """
-    Github Advisories 를 최신 30건 조회하고 파싱하여 리턴하는 함수
+    Github Advisories 를 갱신일 내림차순으로 최대 100건 조회하고 파싱한다.
+    raise_on_error=True이면 수집 실패를 빈 결과와 구분해 호출자에게 전달한다.
 
     Return:  return_advisories(list(dict))
     """
@@ -141,10 +142,12 @@ def get_advisories(dates=[]):
         retry = CONFIG.get("max_retry", 3)
 
         # github 통신
-        response = get_connection(end_point, retry, dates)
+        response = get_connection(end_point, retry, dates or [])
 
         # 재시도까지 실패한 요청을 수집 성공으로 알리지 않는다.
         if response is None:
+            if raise_on_error:
+                raise RuntimeError("GitHub 공지 요청에 실패했습니다.")
             return return_advisories
 
         # None 검사 후 data parse logic 진행
@@ -200,6 +203,8 @@ def get_advisories(dates=[]):
     except Exception as e:
         print("get advisories server error > get_advisories > ", e)
         report_error("GitHub 공지 수집 또는 응답 처리에 실패했습니다.", e, task_name="GitHub 수집")
+        if raise_on_error:
+            raise
 
     return return_advisories
 
