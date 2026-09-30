@@ -1,25 +1,26 @@
 import re
 
-from source.common.notion.notion import get_database_rows, update_database_rows
+from source.common.notion.notion import NotionClient
 from source.config.config import get_env
 
 
-def evaluate_impact(start_at, end_at):
+def evaluate_impact(started_at, ended_at):
     """노션 db에서 가져온 service-package테이블의 데이터와 advisories테이블의 데이터를 비교한다
     각 advisories 마다 "package_name", "package_version_range", "ecosystem" 과 service_package의 "package_name", "package_version", "ecosystem"을 비교하고
     일치하는 경우, 해당 service_package의 'vulnerability' 컬럼을 'severity'컬럼의 값으로 업데이트 한다.
     """
+    notion = NotionClient()
 
     # 1. start_at과 end_at을 notion.py의 def get_database_rows 에 넣고, 먼저 'advisories' 테이블의 데이터들을 가져온다.
-    advisories = get_database_rows(
+    advisories = notion.get_database_rows(
         data_source_id=get_env("NOTION_ADVISORIES_DATA_SOURCE_ID"),
         date_column="updated_at",
-        start_at=start_at,
-        end_at=end_at,
+        started_at=started_at,
+        ended_at=ended_at,
     )
 
     # 2.  notion.py의 def get_database_rows 로 service_package의 데이터들을 가져온다.
-    service_packages = get_database_rows(
+    service_packages = notion.get_database_rows(
         data_source_id=get_env("NOTION_SERVICE_PACKAGE_DATA_SOURCE_ID"),
     )
 
@@ -80,11 +81,9 @@ def evaluate_impact(start_at, end_at):
     # 4. 일치하는 경우에 해당하는 service_package의 'vulnerability' 컬럼을 'severity'컬럼의 값으로 업데이트 한다.
     # common\notion\notion.py의 def update_database_rows()를 사용한다.
     for match in matches:
-        update_database_rows(
+        notion.update_database_rows(
             page_id=match["service_package"]["page_id"],
             properties={
-                "vulnerability": {
-                    "select": {"name": match["advisory"]["severity"]}
-                }
+                "vulnerability": {"select": {"name": match["advisory"]["severity"]}}
             },
         )
