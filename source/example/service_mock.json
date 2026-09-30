@@ -1,0 +1,66 @@
+[
+  {
+    "page_id": "0d6e977c-2df7-5649-a293-6435a646eeed",
+    "id": "SVC-001",
+    "resource_name": "notification-service",
+    "business_domain": "고객 알림",
+    "description": "이메일과 비동기 알림을 발송하는 모의 서비스.",
+    "business_importance": "Medium"
+  },
+  {
+    "page_id": "da46921b-62f0-5cde-94e9-f083717f3541",
+    "id": "SVC-002",
+    "resource_name": "web-gateway",
+    "business_domain": "웹 서비스",
+    "description": "외부 요청과 파일 업로드를 처리하는 모의 웹 게이트웨이.",
+    "business_importance": "High"
+  },
+  {
+    "page_id": "92afb3fb-2e5c-5012-9e2c-2d58f830cc7f",
+    "id": "SVC-003",
+    "resource_name": "order-service",
+    "business_domain": "주문 관리",
+    "description": "주문 생성과 조회를 담당하는 모의 서비스.",
+    "business_importance": "High"
+  },
+  {
+    "page_id": "f5221d3d-653e-5845-8df0-93d5437a704a",
+    "id": "SVC-004",
+    "resource_name": "assistant-service",
+    "business_domain": "업무 지원",
+    "description": "내부 업무 자동화와 API 요청을 처리하는 모의 서비스.",
+    "business_importance": "Medium"
+  },
+  {
+    "page_id": "9b5fcafb-a559-5c29-852f-43fd3f5069d2",
+    "id": "SVC-005",
+    "resource_name": "payment-service",
+    "business_domain": "결제",
+    "description": "결제 요청과 트랜잭션 처리를 담당하는 모의 서비스.",
+    "business_importance": "High"
+  },
+  {
+    "page_id": "b29c20a0-3b88-591e-a534-e0744710e715",
+    "id": "SVC-006",
+    "resource_name": "automation-runner",
+    "business_domain": "운영 자동화",
+    "description": "운영 작업과 명령 실행을 담당하는 모의 서비스.",
+    "business_importance": "Medium"
+  },
+  {
+    "page_id": "8be6b42b-46f1-56ff-ba6e-8953e10bc342",
+    "id": "SVC-007",
+    "resource_name": "container-runtime",
+    "business_domain": "인프라",
+    "description": "컨테이너 이미지와 실행 환경을 관리하는 모의 서비스.",
+    "business_importance": "High"
+  },
+  {
+    "page_id": "a396589e-7c04-52cf-87f4-4b4149a434b1",
+    "id": "SVC-008",
+    "resource_name": "community-service",
+    "business_domain": "커뮤니티",
+    "description": "커뮤니티 로그인과 콘텐츠를 제공하는 모의 서비스.",
+    "business_importance": "Low"
+  }
+]
