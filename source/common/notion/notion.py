@@ -59,6 +59,27 @@ class NotionClient:
             is_inline=is_inline,
         )
 
+    def create_database_row(self, data_source_id: str, properties: dict) -> dict:
+        """데이터 소스에 새 행(노션 페이지) 하나를 생성한다.
+
+        Args:
+            data_source_id: 행을 추가할 데이터 소스 ID (데이터베이스 ID와 다름).
+            properties: 컬럼 이름과 값을 담은 Notion 형식의 딕셔너리.
+                대상 데이터 소스의 컬럼 타입에 맞춰 전달한다.
+                관계형 값에는 연결할 행의 실제 노션 페이지 ID를 사용한다.
+
+        Returns:
+            생성된 노션 페이지 응답. id는 노션이 발급한 실제 페이지 ID이며,
+            이후 관계 연결과 행 업데이트에 사용한다.
+
+        Raises:
+            APIResponseError: 노션 API 요청이 실패한 경우.
+        """
+        return self.client.pages.create(
+            parent={"type": "data_source_id", "data_source_id": data_source_id},
+            properties=properties,
+        )
+
     def get_database_rows(
         self,
         data_source_id: str,
