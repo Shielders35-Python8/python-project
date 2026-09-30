@@ -156,3 +156,15 @@ class NotionClient:
         if getattr(self, "query_policy", None) is not None:
             return self.query_policy.call(self.client.pages.update, page_id=page_id, properties=properties)
         return self.client.pages.update(page_id=page_id, properties=properties)
+
+    @notify_errors("Notion 행 삭제")
+    def delete_database_row(self, page_id: str) -> dict:
+        """노션 행을 삭제한다.
+        
+        Args:
+            page_id: 삭제할 노션 행의 실제 페이지 ID.
+
+        Returns:
+            삭제된 노션 페이지 응답. API 오류는 호출부로 전달한다.
+        """
+        return self.client.pages.update(page_id=page_id, archived=True)
