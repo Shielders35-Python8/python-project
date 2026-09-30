@@ -33,7 +33,7 @@ def make_response_json(return_advisories):
         report_error("수집 결과 파일 저장에 실패했습니다.", e, task_name="GitHub 수집")
 
 
-def get_connection(end_point, retry, *dates):
+def get_connection(end_point, retry, dates=[]):
     """
     github advisory 통신 및 통신 에러를 관리하는 함수
 
@@ -47,9 +47,9 @@ def get_connection(end_point, retry, *dates):
 
     # 기본 : 날짜 필터 없이 전체 Global Advisory 중 최신 게시 순 100 건 조회
     params = {
-        "sort": "published",
-        "direction": "desc",
-        "per_page": 20,
+        "sort": "updated",
+        "direction": "asc",
+        "per_page": 100,
     }
 
     # published param
@@ -57,9 +57,12 @@ def get_connection(end_point, retry, *dates):
         case 0:
             pass
         case 1:
-            params['published'] = f">={dates[0]}"
+            start_date = datetime.fromisoformat(dates[0]).strftime("%Y-%m-%d")
+            params['published'] = f">={start_date}"
         case 2:
-            params["published"] = f"{dates[0]}..{dates[1]}"
+            start_date = datetime.fromisoformat(dates[0]).strftime("%Y-%m-%d")
+            end_date = datetime.fromisoformat(dates[1]).strftime("%Y-%m-%d")
+            params["published"] = f"{start_date}..{end_date}"
 
     print("param > ", params)
 
@@ -119,7 +122,7 @@ def get_connection(end_point, retry, *dates):
 # 오늘 할 일 1. 날짜 조건 추가(str), 페이징 하지말고 100건만, resturn 값 정제
 # cvss 제거
 # 노션 database 에서 제공하는 기능적 한계로 인해 flat 하게 넘김
-def get_advisories(*dates: str):
+def get_advisories(dates=[]):
     """
     Github Advisories 를 최신 30건 조회하고 파싱하여 리턴하는 함수
 
@@ -137,7 +140,7 @@ def get_advisories(*dates: str):
         retry = CONFIG.get("max_retry", 3)
 
         # github 통신
-        response = get_connection(end_point, retry, *dates)
+        response = get_connection(end_point, retry, dates)
 
         # 재시도까지 실패한 요청을 수집 성공으로 알리지 않는다.
         if response is None:
@@ -147,15 +150,13 @@ def get_advisories(*dates: str):
         if response:
             advisories = response.json()
 
-            package_name = None
-            ecosystem = None
-            package_version_range = None
-            cwe_name = None
-
             for advisory in advisories:
                 ghsa_id = advisory.get("ghsa_id")
-                cvss_score = advisory.get("cvss_severities").get("cvss_v3").get("score")
 
+                package_name = None
+                ecosystem = None
+                package_version_range = None
+                cwe_name = None
                 # Notion Database 구조의 한계로 인해 index 0 번째 데이터만 사용
                 vulnerabilities = advisory.get("vulnerabilities", {})
                 if len(vulnerabilities) > 0 :
