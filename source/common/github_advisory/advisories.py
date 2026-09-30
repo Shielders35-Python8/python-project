@@ -42,7 +42,6 @@ def get_connection(end_point, retry, *dates):
     headers = {"Accept": "application/vnd.github+json"}
     if GITHUB_TOKEN : headers['Authorization'] = GITHUB_TOKEN
 
-    print('header', headers)
     # 기본 : 날짜 필터 없이 전체 Global Advisory 중 최신 게시 순 100 건 조회
     params = {
         "sort": "published",
