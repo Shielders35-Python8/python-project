@@ -51,6 +51,10 @@
       <script src="{{ url_for('static', filename='js/dashboard-cache.js') }}" defer></script>
       {% endif %}
 
+      {% if active_page in ['dashboard', 'security_advisories'] %}
+      {% include 'advisory_sync.html' %}
+      {% endif %}
+
       {% if cache_loading|default(false) %}
       <section class="analysis-empty" aria-busy="true" aria-label="데이터 로딩">
         <h2>데이터를 불러오는 중입니다.</h2>
@@ -82,7 +86,7 @@
           <h2>관리 서비스</h2>
           {% if service_count is not none %}
           <p class="metric" aria-label="관리 서비스 {{ service_count }}개">{{ service_count }}</p>
-          <p class="muted">Notion에 등록된 서비스</p>
+          <p class="muted">운영 서비스 수</p>
           {% else %}
           <p class="metric" aria-label="관리 서비스 조회 실패">—</p>
           <p class="muted" role="status">{{ service_error }}</p>
@@ -92,7 +96,7 @@
           <h2>관리 패키지</h2>
           {% if package_count is not none %}
           <p class="metric" aria-label="관리 패키지 {{ package_count }}개">{{ package_count }}</p>
-          <p class="muted">Notion에 등록된 패키지 항목</p>
+          <p class="muted">서비스 적용 패키지 수</p>
           {% else %}
           <p class="metric" aria-label="관리 패키지 조회 실패">—</p>
           <p class="muted" role="status">{{ results_error }}</p>
@@ -167,7 +171,25 @@
       </section>
       {% endif %}
 
-      {% if active_page in ['dashboard', 'results'] %}
+      {% if active_page == 'dashboard' %}
+      <section class="results-section" aria-labelledby="advisory-charts-heading">
+        <div class="section-header">
+          <h2 id="advisory-charts-heading">공지 분석</h2>
+          <a class="refresh-link" href="{{ url_for('advisory_dashboard') }}">기간별 공지 분석 보기 →</a>
+        </div>
+        {% if advisory_error %}
+        <div class="analysis-empty" role="alert">
+          <strong>공지 분석을 표시할 수 없습니다.</strong>
+          <p>{{ advisory_error }}</p>
+          <a class="refresh-link" href="{{ url_for('dashboard', refresh=1) }}">다시 조회</a>
+        </div>
+        {% elif analysis %}
+        {% include 'advisory_charts.html' %}
+        {% endif %}
+      </section>
+      {% endif %}
+
+      {% if active_page == 'results' %}
       <section class="results-section" id="results" aria-labelledby="results-heading">
         <div class="section-header">
           <h2 id="results-heading">분석 결과</h2>
@@ -290,6 +312,10 @@
       </footer>
     </main>
     <script id="analysis-state" type="application/json">{{ analysis_state|tojson }}</script>
+    <script id="sync-state" type="application/json">{{ sync_state|tojson }}</script>
+    <script src="{{ url_for('static', filename='js/advisory-sync.js') }}" defer
+            data-sync-url="{{ url_for('collect_advisories') }}" data-status-url="{{ url_for('advisory_sync_status') }}"
+            data-refresh-advisories="{{ 'true' if active_page in ['dashboard', 'security_advisories', 'advisories'] else 'false' }}"></script>
     <script src="{{ url_for('static', filename='js/analysis-run.js') }}" defer
             data-run-url="{{ url_for('run_project') }}" data-status-url="{{ url_for('analysis_run_status') }}"
             data-refresh-results="{{ 'true' if active_page in ['dashboard', 'results'] else 'false' }}"></script>

@@ -5,6 +5,7 @@
 """
 
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import Flask, current_app, g, has_app_context, jsonify, render_template, request, url_for
@@ -17,8 +18,10 @@ from source.common.notion.notion import NotionClient
 from source.common.notion.query_policy import NotionQueryPolicy
 from source.common.slack.notifications import init_app
 from source.config.config import get_env
-from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
+from source.services.advisory_analysis import analyze_advisories, validate_advisory_period
 from source.services.processor import evaluate_impact
+from source.services.advisory_sync import sync_advisories_to_notion
+from source.web.advisory_sync_runs import AdvisorySyncRuns
 from source.web.analysis_runs import AnalysisRuns
 from source.web.dashboard_data import (
     RESULT_SEVERITY_FILTERS, build_saved_package_results, filter_saved_package_results,
@@ -65,12 +68,6 @@ def fetch_saved_rows(env_key: str, query_policy=None) -> list[dict]:
         client.client.close()
 
 
-def get_saved_advisory_count() -> int:
-    """Notion의 패키지·버전별 행을 공지 ID 기준으로 중복 집계하지 않는다."""
-    advisories = get_saved_rows("NOTION_ADVISORIES_DATA_SOURCE_ID")
-    return len({advisory_key(row, index) for index, row in enumerate(advisories)})
-
-
 def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
     """Notion 공지 전체를 조회해 게시일 범위에 맞는 통계를 반환한다."""
     # 입력 오류는 Notion 요청을 보내기 전에 확인한다.
@@ -84,7 +81,10 @@ def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
 def create_app(config=None) -> Flask:
     """웹 앱을 생성한다. 서버 시작 시 공지 수집을 실행하지 않는다."""
     app = Flask(__name__)
-    app.config.from_mapping(DASHBOARD_CACHE_ENABLED=True, DASHBOARD_CACHE_TTL=60)
+    app.config.from_mapping(
+        DASHBOARD_CACHE_ENABLED=True, DASHBOARD_CACHE_TTL=60,
+        TEMPLATES_AUTO_RELOAD=True,
+    )
     if config:
         app.config.update(config)
     app.json.ensure_ascii = False
@@ -98,6 +98,11 @@ def create_app(config=None) -> Flask:
         lambda: cache.invalidate((PACKAGES,)),
     )
     app.extensions["analysis_runs"] = runs
+    sync_runs = AdvisorySyncRuns(
+        lambda dates, progress: sync_advisories_to_notion(dates, progress=progress, query_policy=query_policy),
+        lambda: cache.invalidate((ADVISORIES,)),
+    )
+    app.extensions["advisory_sync_runs"] = sync_runs
 
     @app.before_request
     def prepare_saved_data():
@@ -120,11 +125,15 @@ def create_app(config=None) -> Flask:
 
     @app.context_processor
     def saved_data_context():
+        today = datetime.now(timezone.utc).date()
         values = {key: request.args[key] for key in ("severity", "page", "started_at", "ended_at")
                   if key in request.args}
         values["refresh"] = "1"
         return {
             "analysis_state": runs.snapshot(),
+            "sync_state": sync_runs.snapshot(),
+            "sync_default_start": (today - timedelta(days=6)).isoformat(),
+            "sync_default_end": today.isoformat(),
             "cache_state": getattr(g, "cache_state", None),
             "cache_page": getattr(g, "cache_page", None),
             "cache_refresh_url": url_for(request.endpoint, **values) if request.endpoint in ENDPOINT_PAGES else None,
@@ -132,7 +141,9 @@ def create_app(config=None) -> Flask:
 
     @app.after_request
     def saved_data_headers(response):
-        if getattr(g, "cache_page", None) or request.endpoint in ("cache_status", "analysis_run_status", "run_project"):
+        if getattr(g, "cache_page", None) or request.endpoint in (
+            "cache_status", "analysis_run_status", "run_project", "collect_advisories", "advisory_sync_status",
+        ):
             response.headers["Cache-Control"] = "no-store"
             if response.is_json and getattr(g, "cache_state", None):
                 body = response.get_json()
@@ -195,9 +206,11 @@ def create_app(config=None) -> Flask:
         title, description = page_content[active_page]
         advisory_count = None
         advisory_error = None
+        analysis = None
         if active_page == "dashboard":
             try:
-                advisory_count = get_saved_advisory_count()
+                analysis = get_saved_advisory_analysis()
+                advisory_count = analysis["summary"]["advisory_count"]
             except Exception as error:
                 app.logger.warning("Notion 공지 조회 실패: %s", type(error).__name__)
                 advisory_error = "Notion 공지 조회 실패 · 새로고침해 주세요."
@@ -227,6 +240,7 @@ def create_app(config=None) -> Flask:
             result_start=(page - 1) * page_size,
             advisory_count=advisory_count,
             advisory_error=advisory_error,
+            analysis=analysis,
             active_page=active_page,
             page_title=title,
             page_description=description,
@@ -354,6 +368,33 @@ def create_app(config=None) -> Flask:
     @app.get("/api/run-status")
     def analysis_run_status():
         return jsonify(**runs.snapshot())
+
+    @app.post("/api/advisories/sync")
+    def collect_advisories():
+        origin = request.headers.get("Origin")
+        if request.headers.get("Sec-Fetch-Site") == "cross-site" or (origin and origin != request.host_url.rstrip("/")):
+            return jsonify(status="error", message="같은 대시보드에서 공지를 수집해 주세요."), 403
+        if not request.is_json:
+            return jsonify(status="error", message="JSON 형식의 실행 요청이 필요합니다."), 415
+        payload = request.get_json(silent=True)
+        if request.args or not isinstance(payload, dict) or set(payload) != {"started_at", "ended_at"}:
+            return jsonify(status="error", message="수집 시작일과 종료일을 입력해 주세요."), 400
+        try:
+            start, end = validate_advisory_period(**payload)
+            if start is None or end is None:
+                raise ValueError("수집 시작일과 종료일을 모두 입력해 주세요.")
+        except ValueError as error:
+            return jsonify(status="error", message=str(error)), 400
+        try:
+            started, run = sync_runs.start(start.isoformat(), end.isoformat())
+        except Exception as error:
+            app.logger.warning("공지 수집 시작 실패: %s", type(error).__name__)
+            return jsonify(status="error", message="수집을 시작하지 못했습니다. 잠시 후 다시 실행해 주세요."), 503
+        return jsonify(status="accepted" if started else "busy", run=run), 202 if started else 409
+
+    @app.get("/api/advisories/sync-status")
+    def advisory_sync_status():
+        return jsonify(**sync_runs.snapshot())
 
     return app
 

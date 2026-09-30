@@ -36,6 +36,9 @@ class DashboardAdvisoriesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('aria-label="수집한 보안 공지 2건">2</p>', response.text)
         self.assertIn("Notion 저장 공지 · 중복 제외", response.text)
+        for heading in ("심각도 분포", "생태계별 공지", "공지 게시 추이", "공지가 많은 패키지"):
+            self.assertIn(heading, response.text)
+        self.assertNotIn('id="results-heading"', response.text)
         self.env.assert_any_call("NOTION_ADVISORIES_DATA_SOURCE_ID")
         self.rows.assert_any_call(data_source_id="advisories-data-source")
         self.assertEqual(sum(call.kwargs["data_source_id"] == "advisories-data-source"
@@ -63,6 +66,7 @@ class DashboardAdvisoriesTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('aria-label="보안 공지 조회 실패">—</p>', response.text)
         self.assertIn("Notion 공지 조회 실패", response.text)
+        self.assertIn("공지 분석을 표시할 수 없습니다.", response.text)
         self.assertNotIn("private upstream error details", response.text)
         self.assertNotIn("Notion에 저장된 공지가 없습니다.", response.text)
 

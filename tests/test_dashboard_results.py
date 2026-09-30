@@ -47,18 +47,20 @@ class DashboardResultsTests(unittest.TestCase):
             raise RuntimeError("private upstream details")
         return self.data[data_source_id]
 
-    def test_dashboard_counts_and_table_use_saved_values(self):
+    def test_dashboard_counts_and_results_table_use_saved_values(self):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn('aria-label="관리 서비스 2개">2</p>', response.text)
         self.assertIn('aria-label="취약 상태로 저장된 패키지 4개">4</p>', response.text)
+        self.assertNotIn('id="results-heading"', response.text)
+        self.assertEqual(self.rows.call_count, 3)
+        response = self.client.get("/results")
         self.assertIn("저장된 패키지 6개 · 취약 상태 4개 · safe 1개", response.text)
         self.assertIn("SVC-001", response.text)
         self.assertIn("web-gateway", response.text)
         self.assertIn("safe는 등록 시 기본값", response.text)
         self.assertNotIn("취약 범위 밖", response.text)
         self.assertNotIn("취약 범위 포함", response.text)
-        self.assertEqual(self.rows.call_count, 3)
         self.notion.return_value.create_database_row.assert_not_called()
         self.notion.return_value.update_database_rows.assert_not_called()
 
@@ -81,7 +83,7 @@ class DashboardResultsTests(unittest.TestCase):
         response = self.client.get("/")
         self.assertIn('aria-label="관리 서비스 0개">0</p>', response.text)
         self.assertIn('aria-label="취약 상태로 저장된 패키지 0개">0</p>', response.text)
-        self.assertIn("등록된 서비스 패키지가 없습니다.", response.text)
+        self.assertIn("등록된 서비스 패키지가 없습니다.", self.client.get("/results").text)
         self.assertNotIn("조회 실패", response.text)
 
     def test_relations_do_not_duplicate_package_counts_or_drop_orphans(self):
@@ -119,11 +121,12 @@ class DashboardResultsTests(unittest.TestCase):
         self.fail_sources.add("packages")
         with self.assertLogs(self.web.__name__, level="WARNING"):
             response = self.client.get("/")
+            results_page = self.client.get("/results")
             api = self.client.get("/api/results")
         self.assertEqual(response.status_code, 200)
         self.assertIn('aria-label="관리 서비스 2개">2</p>', response.text)
         self.assertIn('aria-label="패키지 취약도 조회 실패">—</p>', response.text)
-        self.assertIn("패키지 취약도를 불러오지 못했습니다.", response.text)
+        self.assertIn("패키지 취약도를 불러오지 못했습니다.", results_page.text)
         self.assertNotIn("등록된 서비스 패키지가 없습니다.", response.text)
         self.assertNotIn("private upstream details", response.text)
         self.assertEqual(api.status_code, 503)
@@ -134,10 +137,11 @@ class DashboardResultsTests(unittest.TestCase):
         self.fail_sources.add("services")
         with self.assertLogs(self.web.__name__, level="WARNING"):
             response = self.client.get("/")
+            results_page = self.client.get("/results")
             api = self.client.get("/api/results")
         self.assertIn('aria-label="관리 서비스 조회 실패">—</p>', response.text)
         self.assertIn('aria-label="취약 상태로 저장된 패키지 4개">4</p>', response.text)
-        self.assertIn("일부 서비스명이 표시되지 않습니다.", response.text)
+        self.assertIn("일부 서비스명이 표시되지 않습니다.", results_page.text)
         self.assertEqual(api.status_code, 200)
         self.assertEqual(api.get_json()["status"], "partial")
 
@@ -162,6 +166,7 @@ class DashboardResultsTests(unittest.TestCase):
         self.data["services"][0]["resource_name"] = "<b>service</b>"
         response = self.client.get("/")
         self.assertIn('aria-label="취약 상태로 저장된 패키지 1개">1</p>', response.text)
+        response = self.client.get("/results")
         self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;", response.text)
         self.assertIn("&lt;b&gt;service&lt;/b&gt;", response.text)
         self.assertNotIn("<script>alert(1)</script>", response.text)
@@ -248,7 +253,7 @@ class DashboardResultsTests(unittest.TestCase):
     def test_main_dashboard_summary_is_not_filtered_by_results_tab_parameter(self):
         response = self.client.get("/?severity=safe")
         self.assertIn('aria-label="취약 상태로 저장된 패키지 4개">4</p>', response.text)
-        self.assertIn("package-002", response.text)
+        self.assertIn('aria-label="관리 패키지 6개">6</p>', response.text)
         self.assertNotIn('aria-label="취약도 필터"', response.text)
 
 
