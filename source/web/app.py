@@ -84,7 +84,10 @@ def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
 def create_app(config=None) -> Flask:
     """웹 앱을 생성한다. 서버 시작 시 공지 수집을 실행하지 않는다."""
     app = Flask(__name__)
-    app.config.from_mapping(DASHBOARD_CACHE_ENABLED=True, DASHBOARD_CACHE_TTL=60)
+    app.config.from_mapping(
+        DASHBOARD_CACHE_ENABLED=True, DASHBOARD_CACHE_TTL=60,
+        TEMPLATES_AUTO_RELOAD=True,
+    )
     if config:
         app.config.update(config)
     app.json.ensure_ascii = False
