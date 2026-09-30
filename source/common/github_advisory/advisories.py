@@ -45,11 +45,12 @@ def get_connection(end_point, retry, dates=[]):
     headers = {"Accept": "application/vnd.github+json"}
     if GITHUB_TOKEN : headers['Authorization'] = GITHUB_TOKEN
 
-    # 기본 : 날짜 필터 없이 전체 Global Advisory 중 최신 게시 순 100 건 조회
+    # 기본 : Global Advisory 중 최신 게시 순 조회
     params = {
         "sort": "updated",
-        "direction": "asc",
-        "per_page": 100,
+        "direction": "desc",
+        "per_page": 100
+        #"per_page": 20
     }
 
     # published param
@@ -189,7 +190,7 @@ def get_advisories(dates=[]):
                 )
 
         # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
-        make_response_json(return_advisories)
+        # make_response_json(return_advisories)
 
         send_task_message(
             f"GitHub 보안 공지 수집이 완료되었습니다. 수집 {len(return_advisories)}건.",
