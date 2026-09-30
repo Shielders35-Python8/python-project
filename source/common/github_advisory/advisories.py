@@ -8,6 +8,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 # 폴더 경로는 main 기준
 from source.config.config import get_config
+from source.common.slack.notifications import report_error
+from source.common.slack.slack import send_task_message
 
 # Config, env 등 전역으로 선언하여 프로젝트 로드 시에만 수집
 load_dotenv()
@@ -28,6 +30,7 @@ def make_response_json(return_advisories):
             print("저장 완료 : advisories_response.json")
     except Exception as e:
         print("get advisories return value save error > make_response_json > ", e)
+        report_error("수집 결과 파일 저장에 실패했습니다.", e, task_name="GitHub 수집")
 
 
 def get_connection(end_point, retry, *dates):
@@ -42,7 +45,6 @@ def get_connection(end_point, retry, *dates):
     headers = {"Accept": "application/vnd.github+json"}
     if GITHUB_TOKEN : headers['Authorization'] = GITHUB_TOKEN
 
-    print('header', headers)
     # 기본 : 날짜 필터 없이 전체 Global Advisory 중 최신 게시 순 100 건 조회
     params = {
         "sort": "published",
@@ -75,6 +77,11 @@ def get_connection(end_point, retry, *dates):
         # 예외 상황 log 를 자세히 남겨야 파악 및 조치가 편함
         except Exception as e:
             print("get advisories connection error > get_connection")
+            report_error(
+                f"GitHub 요청에 실패했습니다 (시도 {attempt + 1}/{retry}).",
+                e,
+                task_name="GitHub 수집",
+            )
 
             if isinstance(e, requests.exceptions.HTTPError):
                 status = e.response.status_code
@@ -151,6 +158,10 @@ def get_advisories(*dates):
         # github 통신
         response = get_connection(end_point, retry, *dates)
 
+        # 재시도까지 실패한 요청을 수집 성공으로 알리지 않는다.
+        if response is None:
+            return return_advisories
+
         # None 검사 후 data parse logic 진행
         if response:
             advisories = response.json()
@@ -189,8 +200,14 @@ def get_advisories(*dates):
         # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
         make_response_json(return_advisories)
 
+        send_task_message(
+            f"GitHub 보안 공지 수집이 완료되었습니다. 수집 {len(return_advisories)}건.",
+            task_name="GitHub 수집",
+        )
+
     except Exception as e:
         print("get advisories server error > get_advisories > ", e)
+        report_error("GitHub 공지 수집 또는 응답 처리에 실패했습니다.", e, task_name="GitHub 수집")
 
     return return_advisories
 

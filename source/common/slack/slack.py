@@ -1,24 +1,33 @@
 """SLACK_WEBHOOK_URL에 연결된 채널로 오류 및 작업 알림을 전송한다."""
 
 import logging
+import os
+from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
-from source.config.config import get_env
-
-
+# 설정 파일 로딩 자체가 실패해도 오류 알림을 보낼 수 있게 독립적으로 읽는다.
+load_dotenv(Path(__file__).resolve().parents[3] / ".env")
 logger = logging.getLogger(__name__)
 
 
 def _send_message(text: str) -> bool:
-    try:
-        webhook_url = get_env("SLACK_WEBHOOK_URL").strip()
-    except KeyError:
-        webhook_url = ""
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
 
     if not webhook_url:
         logger.error("슬랙 전송 실패: SLACK_WEBHOOK_URL이 설정되지 않았습니다.")
         return False
+
+    # 예외나 로그에 섞인 환경변수의 인증 정보를 채널에 노출하지 않는다.
+    secrets = [
+        value for key, value in os.environ.items()
+        if value and (any(word in key.upper() for word in
+                          ("TOKEN", "SECRET", "PASSWORD", "WEBHOOK"))
+                      or key.upper().endswith("_KEY"))
+    ]
+    for secret in sorted(secrets, key=len, reverse=True):
+        text = text.replace(secret, "[REDACTED]")
 
     # 오류 내용에 포함된 <...> 등이 슬랙 멘션으로 해석되지 않도록 한다.
     text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
