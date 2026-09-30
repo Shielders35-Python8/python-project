@@ -27,13 +27,14 @@ def _parse_datetime(value) -> datetime | None:
 def _filter_exist_advisories(
     notion: NotionClient, data_source_id: str, advisories: list[dict]
 ) -> tuple[list[dict], list[tuple[str, dict]]]:
-    """Notion 에 이미 있는 advisory 를 (id, published_at) 로 찾아 생성/수정 대상으로 분류
+    """Notion 에 이미 있는 advisory 를 (id, published_at) 를 키로 찾아 생성/수정 대상으로 분류
 
-    - (id, published_at) 이 같은 행이 없으면 → 생성 대상
+    - id 가 같은 행이 없으면 → 생성 대상
     - 같은 행이 있고 updated_at 도 같으면 → 제외 (이미 적재됨)
     - 같은 행이 있고 updated_at 이 다르면 → 수정 대상 (GitHub 에서 갱신된 공지)
     - id 가 없는 advisory 는 식별/적재할 수 없으므로 제외
     - Notion 조회 실패 시 예외를 그대로 전달 (중복 적재 방지)
+    - 같은 키의 행이 여러 개면(기존 중복) 첫 번째 행만 사용하고 나머지 행은 삭제
 
     Return: (to_create(list(dict)), to_update(list((page_id, advisory))))
     """
@@ -69,21 +70,44 @@ def _filter_exist_advisories(
     ) or []
 
     # 3. Notion 에 이미 있는 (id, published_at) → 행 정보
-    #    같은 키의 행이 여러 개면(기존 중복) 첫 번째 행만 사용
+    #    published_at 이 빈 행은 위 범위 조회에서 이미 빠지고, id 가 빈 행은 여기서 제외
+    #    이번 조회 대상 키만 다루며, 같은 키의 행이 여러 개면 첫 번째 행만 사용하고 나머지는 삭제 대상
+    target_keys = {
+        (advisory["id"], _parse_datetime(advisory.get("published_at")))
+        for advisory in valid_advisories
+    }
     exist = {}
+    duplicate_rows = []
     for row in rows:
         if not isinstance(row, dict):
             continue
         notion_id = row.get("id")
         notion_published_at = _parse_datetime(row.get("published_at"))
         page_id = row.get("page_id")
-        if notion_id and notion_published_at and page_id:
-            exist.setdefault((notion_id, notion_published_at), row)
+        if not notion_id or not notion_published_at or not page_id:
+            continue
 
-    # 4. 생성 / 수정 / 제외 분류
+        key = (notion_id, notion_published_at)
+        if key not in target_keys:
+            continue
+        if key in exist:
+            duplicate_rows.append((notion_id, page_id))
+        else:
+            exist[key] = row
+
+    # 4. 기존 중복 행 삭제 (Notion 휴지통으로 이동), 실패해도 분류/적재는 계속 진행
+    deleted = 0
+    for notion_id, page_id in duplicate_rows:
+        try:
+            notion.delete_database_row(page_id)
+            deleted += 1
+        except Exception as e:
+            print(f"notion 중복 행 삭제 실패 > _filter_exist_advisories > {notion_id} ({page_id}) > ", e)
+
+    # 5. 생성 / 수정 / 제외 분류
     to_create, to_update = [], []
     for advisory in valid_advisories:
-        key = (advisory.get("id"), _parse_datetime(advisory.get("published_at")))
+        key = (advisory["id"], _parse_datetime(advisory.get("published_at")))
         row = exist.get(key)
         if row is None:
             to_create.append(advisory)
@@ -96,7 +120,8 @@ def _filter_exist_advisories(
             to_update.append((row["page_id"], advisory))
 
     skipped = len(advisories) - len(to_create) - len(to_update)
-    print(f"notion 중복 필터링 : {len(advisories)} 건 중 생성 {len(to_create)} 건, 수정 {len(to_update)} 건, 제외 {skipped} 건")
+    print(f"notion 중복 필터링 : {len(advisories)} 건 중 생성 {len(to_create)} 건, 수정 {len(to_update)} 건, 제외 {skipped} 건"
+          f" / 기존 중복 행 삭제 {deleted} 건 (실패 {len(duplicate_rows) - deleted} 건)")
 
     return to_create, to_update
 
@@ -125,33 +150,57 @@ def _to_notion_properties(advisory: dict) -> dict:
 
 
 @notify_errors("보안 공지 Notion 적재")
-def sync_advisories_to_notion(dates=None) -> dict:
-    """GitHub advisories 를 조회해 Notion advisories DB 에 적재하고 결과 요약을 리턴"""
-    notion = NotionClient()
+def sync_advisories_to_notion(dates=None, *, progress=None, query_policy=None) -> dict:
+    """GitHub advisories 를 조회해 Notion advisories DB 에 적재하고 결과 요약을 리턴
+
+    Args:
+        dates(list(str)): published 날짜 조건 (0~2개)
+        progress(callable): 진행 상황을 전달받는 콜백 (웹 진행 상태 표시용), 없으면 무시
+        query_policy(NotionQueryPolicy): Notion 요청 간격/재시도 정책, 없으면 기본 클라이언트 사용
+    """
     data_source_id = get_env("NOTION_ADVISORIES_DATA_SOURCE_ID")
+    if not data_source_id or not data_source_id.strip():
+        raise ValueError("Notion 공지 데이터 소스 ID가 필요합니다.")
+    progress = progress or (lambda **values: None)
+    options = {"timeout_ms": 15_000, "query_policy": query_policy} if query_policy else {}
+    notion = NotionClient(**options)
+    try:
+        progress(stage="fetching", message="GitHub 공지를 가져오고 있습니다.")
+        advisories = get_advisories(dates or [], raise_on_error=True) or []
+        fetched = len(advisories)
 
-    advisories = get_advisories(dates or []) or []
-    to_create, to_update = _filter_exist_advisories(notion, data_source_id, advisories)
-    inserted, updated, failed = 0, 0, []
-    print("========================== 적재 시작 =========================")
-    for advisory in to_create:
-        try:
-            notion.create_database_row(data_source_id, _to_notion_properties(advisory))
-            inserted += 1
-        except Exception as e:
-            failed.append({"id": advisory.get("id"), "action": "create", "error": str(e)})
+        progress(stage="deduplicating", message="Notion에 저장된 공지와 중복을 확인하고 있습니다.", fetched=fetched)
+        to_create, to_update = _filter_exist_advisories(notion, data_source_id, advisories)
+        skipped = fetched - len(to_create) - len(to_update)
 
-    for page_id, advisory in to_update:
-        try:
-            notion.update_database_rows(page_id, _to_notion_properties(advisory))
-            updated += 1
-        except Exception as e:
-            failed.append({"id": advisory.get("id"), "action": "update", "error": str(e)})
-    print("========================== 적재 완료 =========================")
-    return {
-        "fetched": len(advisories),
-        "inserted": inserted,
-        "updated": updated,
-        "skipped": len(advisories) - len(to_create) - len(to_update),
-        "failed": failed,
-    }
+        inserted, updated, failed = 0, 0, []
+        progress(stage="saving", message="공지를 Notion에 저장하고 있습니다.",
+                 skipped=skipped, total=len(to_create) + len(to_update))
+        print("========================== 적재 시작 =========================")
+        for advisory in to_create:
+            try:
+                notion.create_database_row(data_source_id, _to_notion_properties(advisory))
+                inserted += 1
+            except Exception as e:
+                failed.append({"id": advisory.get("id"), "action": "create", "error": str(e)})
+            progress(inserted=inserted, updated=updated, failed_count=len(failed))
+
+        for page_id, advisory in to_update:
+            try:
+                notion.update_database_rows(page_id, _to_notion_properties(advisory))
+                updated += 1
+            except Exception as e:
+                failed.append({"id": advisory.get("id"), "action": "update", "error": str(e)})
+            progress(inserted=inserted, updated=updated, failed_count=len(failed))
+        print("========================== 적재 완료 =========================")
+
+        return {
+            "fetched": fetched,
+            "inserted": inserted,
+            "updated": updated,
+            "skipped": skipped,
+            "failed": failed,
+        }
+    finally:
+        # 이 함수에서 만든 클라이언트만 닫는다 (다른 모듈은 각자 NotionClient 를 생성)
+        notion.client.close()
