@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>[미리보기] 보안 공지 영향 대시보드</title>
+    <!-- 팀 공용 스타일을 그대로 쓰고, 미리보기 전용 스타일만 아래에 추가 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+      body { background: #f3f6fa; }
+      .summary-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .metric.alert { color: #b3261e; }
+      .primary { color: #fff; background: #2857a5; border: 0; cursor: pointer; }
+      .primary:hover { background: #1f4787; }
+      .primary[disabled] { background: #8aa4cf; cursor: wait; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .status { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; color: #52647d; margin-top: 14px; }
+      .src { padding: 2px 10px; border-radius: 999px; font-weight: 700; font-size: 0.75rem; }
+      .src-live { background: #e1f3eb; color: #216149; }
+      .src-mock { background: #fdf3cf; color: #7a5a00; }
+
+      .pill { display: inline-block; white-space: nowrap; padding: 2px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+      .sev-critical { background: #f9dedc; color: #8c1d18; }
+      .sev-high { background: #fde7d9; color: #9a3412; }
+      .sev-medium { background: #fdf3cf; color: #7a5a00; }
+      .sev-low, .safe { background: #e1f3eb; color: #216149; }
+      .sev-unknown { background: #e8edf3; color: #52647d; }
+      .hit { background: #2857a5; color: #fff; }
+
+      /* 공지 카드 목록 */
+      .filters { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 16px; }
+      .chip { min-height: 32px; padding: 4px 12px; font-size: 0.8rem; border-radius: 999px; color: #2857a5; background: #fff; border: 1px solid #cbd8e9; cursor: pointer; }
+      .chip[aria-pressed="true"] { background: #2857a5; color: #fff; border-color: #2857a5; }
+      .news-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 16px; max-height: 560px; overflow-y: auto; padding: 2px; }
+      .news-card { text-align: left; align-items: flex-start; justify-content: flex-start; display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; background: #fff; border: 1px solid #dfe6ef; border-radius: 10px; cursor: pointer; font: inherit; color: inherit; }
+      .news-card:hover { border-color: #2857a5; box-shadow: 0 2px 8px rgba(40,87,165,.12); }
+      .news-card.affects { border-left: 4px solid #2857a5; }
+      .news-card .top { display: flex; gap: 6px; flex-wrap: wrap; }
+      .news-card .t { font-weight: 700; font-size: 0.9rem; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+      .news-card .meta { font-size: 0.78rem; color: #52647d; }
+
+      /* 상세 패널 (오른쪽에서 열림) */
+      .drawer-bg { position: fixed; inset: 0; background: rgba(23,43,77,.35); }
+      .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); background: #fff; padding: 28px; overflow-y: auto; box-shadow: -8px 0 24px rgba(0,0,0,.15); display: flex; flex-direction: column; gap: 16px; }
+      .drawer h3 { margin: 0; font-size: 1.15rem; line-height: 1.4; }
+      .drawer dl { display: grid; grid-template-columns: 110px 1fr; gap: 8px 12px; margin: 0; font-size: 0.9rem; }
+      .drawer dt { color: #52647d; }
+      .drawer dd { margin: 0; overflow-wrap: anywhere; }
+      .drawer .note { font-size: 0.8rem; color: #52647d; background: #f3f6fa; padding: 10px 12px; border-radius: 8px; }
+      .close { align-self: flex-end; min-height: 32px; padding: 4px 12px; background: #fff; border: 1px solid #cbd8e9; color: #2857a5; cursor: pointer; }
+
+      .chart-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 24px; margin-bottom: 24px; }
+      .chart-box { position: relative; height: 280px; margin-top: 16px; }
+      .muted-cell { color: #52647d; }
+      @media (max-width: 900px) {
+        .summary-grid.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .chart-grid { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="dashboard">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SK SHIELDUS ROOKIES · TEAM 8 · PREVIEW</p>
+          <h1>보안 공지 영향 대시보드</h1>
+          <p class="description">GitHub Advisories 공지와 우리 회사(가정) 서비스를 비교합니다.</p>
+        </div>
+        <div class="actions">
+          <form method="post" action="{{ url_for('fetch_advisories') }}" onsubmit="this.querySelector('button').disabled=true; this.querySelector('button').textContent='가져오는 중…';">
+            <button type="submit" class="button primary">최신 공지 가져오기</button>
+          </form>
+          <form method="post" action="{{ url_for('reset') }}">
+            <button type="submit" class="button secondary">mock으로 되돌리기</button>
+          </form>
+        </div>
+      </header>
+
+      <div class="status" role="status">
+        <span>공지 목록 <span class="src src-{{ status.news_source }}">{{ status.news_source }}</span></span>
+        <span>영향 분석 기준 <span class="src src-{{ status.analysis_source }}">{{ status.analysis_source }}</span></span>
+        {% if status.fetched_at %}<span>마지막 요청 {{ status.fetched_at }}</span>{% endif %}
+        <span>{{ status.message }}</span>
+      </div>
+      <div style="height:24px"></div>
+
+      <!-- ① 요약 카드 -->
+      <section class="summary-grid four" aria-label="요약">
+        <article class="card summary-card">
+          <h2>보안 공지</h2>
+          <p class="metric">{{ summary.news }}</p>
+          <p class="muted">GitHub Advisories (패키지 범위 {{ summary.news_rows }}줄)</p>
+        </article>
+        <article class="card summary-card">
+          <h2>관리 서비스 / 패키지</h2>
+          <p class="metric">{{ summary.services }} / {{ summary.packages }}</p>
+          <p class="muted">회사 자산 (mock)</p>
+        </article>
+        <article class="card summary-card">
+          <h2>영향 매칭</h2>
+          <p class="metric alert">{{ summary.matches }}</p>
+          <p class="muted">서비스 {{ summary.affected_services }} / {{ summary.services }}개 영향</p>
+        </article>
+        <article class="card summary-card">
+          <h2>Critical·High 매칭</h2>
+          <p class="metric alert">{{ summary.critical_high }}</p>
+          <p class="muted">우선 조치 대상</p>
+        </article>
+      </section>
+
+      <!-- ② 보안 공지 카드 -->
+      <section class="card panel" aria-labelledby="news-heading">
+        <h2 id="news-heading">보안 공지</h2>
+        <p class="muted">카드를 누르면 상세 정보가 열립니다. 파란 테두리 = 우리 서비스에 영향 있는 공지</p>
+        <div class="filters" role="group" aria-label="공지 필터">
+          <button type="button" class="chip" data-filter="all" aria-pressed="true">전체</button>
+          <button type="button" class="chip" data-filter="affects" aria-pressed="false">우리 서비스 영향</button>
+          <button type="button" class="chip" data-filter="urgent" aria-pressed="false">Critical·High</button>
+        </div>
+        <div class="news-grid" id="newsGrid">
+          {% for c in cards %}
+          <button type="button" class="news-card {{ 'affects' if c.affects_us }}" data-index="{{ loop.index0 }}"
+                  data-affects="{{ 1 if c.affects_us else 0 }}" data-urgent="{{ 1 if c.severity in ['critical','high'] else 0 }}">
+            <span class="top">
+              <span class="pill sev-{{ c.severity }}">{{ c.severity }}</span>
+              {% if c.affects_us %}<span class="pill hit">우리 서비스 영향</span>{% endif %}
+            </span>
+            <span class="t">{{ c.title }}</span>
+            <span class="meta">{{ c.id }} · {{ c.published }}{% if c.package_name != '-' %} · {{ c.package_name }}{% endif %}</span>
+          </button>
+          {% else %}
+          <p class="muted">공지가 없습니다.</p>
+          {% endfor %}
+        </div>
+      </section>
+
+      <!-- ③ 서비스(mock) 처리 결과 -->
+      <section class="card panel" aria-labelledby="svc-heading">
+        <h2 id="svc-heading">서비스별 처리 결과</h2>
+        <p class="muted">회사 서비스(mock) 기준. 영향 공지가 있으면 가장 높은 심각도를 표시</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>서비스</th><th>업무 영역</th><th>업무 중요도</th><th>패키지 수</th><th>영향 공지</th><th>상태</th></tr>
+            </thead>
+            <tbody>
+              {% for s in service_rows %}
+              <tr>
+                <td><strong>{{ s.name }}</strong></td>
+                <td class="muted-cell">{{ s.domain }}</td>
+                <td>{{ s.importance }}</td>
+                <td>{{ s.packages }}</td>
+                <td>{{ s.hits }}</td>
+                <td>{% if s.worst %}<span class="pill sev-{{ s.worst }}">{{ s.worst }}</span>{% else %}<span class="pill safe">안전</span>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ④ 차트 -->
+      <section class="chart-grid">
+        <div class="card panel">
+          <h2>심각도별 영향 매칭</h2>
+          <p class="muted">공지 심각도 기준</p>
+          <div class="chart-box"><canvas id="severityChart" aria-label="심각도별 영향 매칭 차트"></canvas></div>
+        </div>
+        <div class="card panel">
+          <h2>서비스별 영향 매칭</h2>
+          <p class="muted">막대 색이 진할수록 업무 중요도 High</p>
+          <div class="chart-box"><canvas id="serviceChart" aria-label="서비스별 영향 매칭 차트"></canvas></div>
+        </div>
+      </section>
+
+      <!-- ⑤ 상세 표 -->
+      <section class="card panel" aria-labelledby="results-heading">
+        <h2 id="results-heading">영향 결과 상세</h2>
+        <p class="muted">심각도 높은 순 → 서비스 중요도 높은 순</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>심각도</th><th>서비스 (중요도)</th><th>패키지</th><th>설치 버전</th><th>취약 버전 범위</th><th>공지</th></tr>
+            </thead>
+            <tbody>
+              {% for r in results %}
+              <tr>
+                <td><span class="pill sev-{{ r.severity }}">{{ r.severity }}</span></td>
+                <td><strong>{{ r.service_name }}</strong> <span class="muted-cell">({{ r.importance }})</span></td>
+                <td>{{ r.package_name }}</td>
+                <td>{{ r.installed_version }}</td>
+                <td>{{ r.package_version_range }}</td>
+                <td><a href="{{ r.advisory_url }}" target="_blank" rel="noopener">{{ r.advisory_id }}</a></td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="empty-state"><strong>영향 결과가 없습니다.</strong></td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <footer>Python Team 8 · 시각화 미리보기 (로컬 전용, 커밋하지 않음)</footer>
+    </main>
+
+    <!-- 상세 패널 -->
+    <div id="drawer" hidden>
+      <div class="drawer-bg" data-close></div>
+      <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+        <button type="button" class="button close" data-close>닫기 ✕</button>
+        <div class="top" id="dBadges"></div>
+        <h3 id="dTitle"></h3>
+        <dl id="dList"></dl>
+        <a id="dLink" class="button primary" target="_blank" rel="noopener">GitHub에서 원문 보기 (새 탭)</a>
+        <p class="note">GitHub는 보안 정책상 다른 사이트 안에 페이지를 끼워 넣는 것(iframe)을 막아 두어서, 원문은 새 탭으로 엽니다.</p>
+      </aside>
+    </div>
+
+    <script>
+      // 파이썬에서 넘긴 값을 자바스크립트로 받기 (tojson = 안전하게 JSON 으로 변환)
+      const CARDS = {{ cards | tojson }};
+      const severityChart = {{ severity_chart | tojson }};
+      const serviceChart = {{ service_chart | tojson }};
+
+      // ---- 공지 필터 ----
+      document.querySelectorAll(".chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", c === chip));
+          const f = chip.dataset.filter;
+          document.querySelectorAll(".news-card").forEach(card => {
+            card.hidden = (f === "affects" && card.dataset.affects !== "1") || (f === "urgent" && card.dataset.urgent !== "1");
+          });
+        });
+      });
+
+      // ---- 카드 클릭 → 상세 패널 ----
+      const drawer = document.getElementById("drawer");
+      const esc = s => String(s ?? "-").replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+      document.querySelectorAll(".news-card").forEach(card => {
+        card.addEventListener("click", () => {
+          const c = CARDS[Number(card.dataset.index)];
+          document.getElementById("dBadges").innerHTML =
+            `<span class="pill sev-${esc(c.severity)}">${esc(c.severity)}</span> ` +
+            (c.affects_us ? '<span class="pill hit">우리 서비스 영향</span>' : "");
+          document.getElementById("dTitle").textContent = c.title;
+          const rows = [["공지 ID", c.id], ["CVE", c.cve_id], ["CVSS", c.cvss_score ?? "-"], ["게시일", c.published], ["원인", c.reason]];
+          const pkgs = c.packages.length ? c.packages.map(esc).join("<br>") : "응답에 패키지 정보 없음";
+          document.getElementById("dList").innerHTML =
+            rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("") + `<dt>영향 패키지·범위</dt><dd>${pkgs}</dd>`;
+          document.getElementById("dLink").href = c.url;
+          drawer.hidden = false;
+        });
+      });
+      drawer.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", () => drawer.hidden = true));
+      document.addEventListener("keydown", e => { if (e.key === "Escape") drawer.hidden = true; });
+
+      // ---- 차트 ----
+      const SEV_COLOR = { critical: "#b3261e", high: "#e8590c", medium: "#e0a800", low: "#2f9e6e" };
+      const IMP_COLOR = { High: "#1f3f7a", Medium: "#6b8cc7", Low: "#b9c8e3" };
+      if (window.Chart) {
+        new Chart(document.getElementById("severityChart"), {
+          type: "doughnut",
+          data: { labels: severityChart.labels,
+                  datasets: [{ data: severityChart.values, backgroundColor: severityChart.labels.map(s => SEV_COLOR[s] || "#999") }] },
+          options: { maintainAspectRatio: false, plugins: { legend: { position: "bottom" } } }
+        });
+        new Chart(document.getElementById("serviceChart"), {
+          type: "bar",
+          data: { labels: serviceChart.labels,
+                  datasets: [{ label: "영향 매칭 수", data: serviceChart.values,
+                               backgroundColor: serviceChart.importance.map(i => IMP_COLOR[i] || "#999") }] },
+          options: { indexAxis: "y", maintainAspectRatio: false, plugins: { legend: { display: false } },
+                     scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+      }
+    </script>
+  </body>
+</html>
