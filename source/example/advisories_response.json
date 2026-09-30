@@ -7,7 +7,10 @@
         "updated_at": "2026-09-29T23:54:45Z",
         "severity": "high",
         "cve_id": "CVE-2026-102281",
-        "cvss_score": 7.5
+        "ecosystem": "npm",
+        "package_name": "@nestjs/microservices",
+        "package_version_range": "< 11.2.4",
+        "reason": "Uncaught Exception"
     },
     {
         "id": "GHSA-hrr3-gc8f-f4qj",
@@ -17,7 +20,10 @@
         "updated_at": "2026-09-29T23:54:26Z",
         "severity": "medium",
         "cve_id": "CVE-2026-86472",
-        "cvss_score": 4.8
+        "ecosystem": "npm",
+        "package_name": "fast-uri",
+        "package_version_range": "< 2.4.7",
+        "reason": "Improper Handling of Case Sensitivity"
     },
     {
         "id": "GHSA-jvvf-x445-j334",
@@ -27,7 +33,10 @@
         "updated_at": "2026-09-29T23:51:17Z",
         "severity": "medium",
         "cve_id": "CVE-2026-86818",
-        "cvss_score": 4.8
+        "ecosystem": "npm",
+        "package_name": "fast-uri",
+        "package_version_range": ">= 4.1.3, < 4.1.5",
+        "reason": "Encoding Error"
     },
     {
         "id": "GHSA-hrh2-vp3x-79xf",
@@ -37,7 +46,10 @@
         "updated_at": "2026-09-29T23:49:43Z",
         "severity": "critical",
         "cve_id": "CVE-2026-101894",
-        "cvss_score": 9.1
+        "ecosystem": "npm",
+        "package_name": "@xhmikosr/decompress",
+        "package_version_range": ">= 11.0.0, <= 11.1.3",
+        "reason": "Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
     },
     {
         "id": "GHSA-j6r3-76f7-8jcv",
@@ -47,7 +59,10 @@
         "updated_at": "2026-09-29T23:46:54Z",
         "severity": "medium",
         "cve_id": "CVE-2026-101912",
-        "cvss_score": 0.0
+        "ecosystem": "npm",
+        "package_name": "ip-address",
+        "package_version_range": "<= 10.7.0",
+        "reason": "Incorrect Comparison"
     },
     {
         "id": "GHSA-h3mg-xc3c-68pw",
@@ -57,7 +72,10 @@
         "updated_at": "2026-09-29T23:46:40Z",
         "severity": "medium",
         "cve_id": "CVE-2026-101911",
-        "cvss_score": 0.0
+        "ecosystem": "npm",
+        "package_name": "ip-address",
+        "package_version_range": "<= 10.7.0",
+        "reason": "Uncontrolled Resource Consumption"
     },
     {
         "id": "GHSA-4p3w-j4w9-5jqw",
@@ -67,7 +85,10 @@
         "updated_at": "2026-09-29T23:46:04Z",
         "severity": "medium",
         "cve_id": "CVE-2026-17495",
-        "cvss_score": 5.9
+        "ecosystem": "npm",
+        "package_name": "moment",
+        "package_version_range": ">= 2.29.2, < 2.31.0",
+        "reason": "Path Traversal: 'dir/../../filename'"
     },
     {
         "id": "GHSA-q2hr-2g5m-vwhr",
@@ -77,7 +98,10 @@
         "updated_at": "2026-09-29T23:45:39Z",
         "severity": "medium",
         "cve_id": "CVE-2026-102277",
-        "cvss_score": 5.3
+        "ecosystem": "npm",
+        "package_name": "brace-expansion",
+        "package_version_range": ">= 4.0.0, < 5.0.12",
+        "reason": "Uncontrolled Resource Consumption"
     },
     {
         "id": "GHSA-qhr7-859c-m2p7",
@@ -87,7 +111,10 @@
         "updated_at": "2026-09-29T23:45:19Z",
         "severity": "high",
         "cve_id": "CVE-2026-102278",
-        "cvss_score": 7.5
+        "ecosystem": "npm",
+        "package_name": "brace-expansion",
+        "package_version_range": ">= 4.0.0, < 5.0.11",
+        "reason": "Uncontrolled Resource Consumption"
     },
     {
         "id": "GHSA-6j4f-fj2g-mc7p",
@@ -97,7 +124,10 @@
         "updated_at": "2026-09-29T23:44:59Z",
         "severity": "high",
         "cve_id": "CVE-2026-102276",
-        "cvss_score": 7.5
+        "ecosystem": "npm",
+        "package_name": "brace-expansion",
+        "package_version_range": ">= 4.0.0, < 5.0.10",
+        "reason": "Uncontrolled Resource Consumption"
     },
     {
         "id": "GHSA-2gc4-cqfq-p2gv",
@@ -107,7 +137,10 @@
         "updated_at": "2026-09-29T23:44:34Z",
         "severity": "high",
         "cve_id": "CVE-2026-102599",
-        "cvss_score": 7.5
+        "ecosystem": "npm",
+        "package_name": "engine.io",
+        "package_version_range": ">= 6.6.0, < 6.6.10",
+        "reason": "Uncaught Exception"
     },
     {
         "id": "GHSA-g57g-f23g-4646",
@@ -117,7 +150,10 @@
         "updated_at": "2026-09-29T23:44:05Z",
         "severity": "medium",
         "cve_id": null,
-        "cvss_score": 5.3
+        "ecosystem": "npm",
+        "package_name": "nodemailer",
+        "package_version_range": ">= 9.1.0, < 10.0.9",
+        "reason": "Improper Input Validation"
     },
     {
         "id": "GHSA-v53p-9fqp-m79j",
@@ -127,7 +163,10 @@
         "updated_at": "2026-09-29T23:43:38Z",
         "severity": "high",
         "cve_id": null,
-        "cvss_score": 7.5
+        "ecosystem": "npm",
+        "package_name": "nodemailer",
+        "package_version_range": "<= 10.0.5",
+        "reason": "Inefficient Algorithmic Complexity"
     },
     {
         "id": "GHSA-9j54-fg26-wv3r",
@@ -137,7 +176,10 @@
         "updated_at": "2026-09-29T23:43:20Z",
         "severity": "high",
         "cve_id": "CVE-2026-102266",
-        "cvss_score": 7.4
+        "ecosystem": "pip",
+        "package_name": "PyJWT",
+        "package_version_range": ">= 2.13.0, < 2.14.0",
+        "reason": "Improper Verification of Cryptographic Signature"
     },
     {
         "id": "GHSA-8wjv-2p76-3863",
@@ -147,7 +189,10 @@
         "updated_at": "2026-09-29T23:43:07Z",
         "severity": "medium",
         "cve_id": "CVE-2026-102265",
-        "cvss_score": 5.3
+        "ecosystem": "pip",
+        "package_name": "pyJWT",
+        "package_version_range": ">= 2.13.0, < 2.14.0",
+        "reason": "Uncontrolled Recursion"
     },
     {
         "id": "GHSA-hxm8-2xgr-2p9m",
@@ -157,7 +202,10 @@
         "updated_at": "2026-09-29T23:17:56Z",
         "severity": "medium",
         "cve_id": "CVE-2026-102269",
-        "cvss_score": 4.8
+        "ecosystem": "pip",
+        "package_name": "PyJWT",
+        "package_version_range": "<= 2.13.0",
+        "reason": "Incorrect Behavior Order: Validate Before Canonicalize"
     },
     {
         "id": "GHSA-ffc3-869f-jxw9",
@@ -167,7 +215,10 @@
         "updated_at": "2026-09-29T23:17:34Z",
         "severity": "critical",
         "cve_id": "CVE-2026-102268",
-        "cvss_score": 9.1
+        "ecosystem": "pip",
+        "package_name": "PyJWT",
+        "package_version_range": "<= 2.13.0",
+        "reason": "Improper Verification of Cryptographic Signature"
     },
     {
         "id": "GHSA-w2cx-738m-mc7w",
@@ -177,7 +228,10 @@
         "updated_at": "2026-09-29T23:16:55Z",
         "severity": "high",
         "cve_id": "CVE-2026-102273",
-        "cvss_score": 7.4
+        "ecosystem": "pip",
+        "package_name": "PyJWT",
+        "package_version_range": "= 2.13.0",
+        "reason": "Improper Verification of Cryptographic Signature"
     },
     {
         "id": "GHSA-9v7f-9g4p-ffgj",
@@ -187,7 +241,10 @@
         "updated_at": "2026-09-29T23:15:00Z",
         "severity": "high",
         "cve_id": "CVE-2026-102267",
-        "cvss_score": 7.4
+        "ecosystem": "pip",
+        "package_name": "PyJWT",
+        "package_version_range": "<= 2.13.0",
+        "reason": "Exposure of Sensitive Information to an Unauthorized Actor"
     },
     {
         "id": "GHSA-p4g4-x82p-q773",
@@ -197,6 +254,9 @@
         "updated_at": "2026-09-29T23:14:34Z",
         "severity": "high",
         "cve_id": "CVE-2026-102271",
-        "cvss_score": 7.4
+        "ecosystem": "pip",
+        "package_name": "pyjwt",
+        "package_version_range": ">= 2.4.0, < 2.14.0",
+        "reason": "Improper Verification of Cryptographic Signature"
     }
 ]
