@@ -65,7 +65,7 @@ def get_connection(end_point, retry, *dates):
     for attempt in range(retry):
         try:
             response = requests.get(
-                end_point, headers=headers, params=params, timeout=10
+                end_point, headers=headers, params=params, timeout=5
             )
 
             response.raise_for_status()
@@ -130,7 +130,9 @@ def get_connection(end_point, retry, *dates):
 
 # 날짜로 걸면 페이지네이션 추가해서 전체 데이터 읽어오겠습니당
 
-# 오늘 할 일 1. 날짜 조건 추가, 페이징 추가, 그냥 토큰 붙이기... , resturn 값 정제
+# 오늘 할 일 1. 날짜 조건 추가(str), 페이징 하지말고 100건만, resturn 값 정제
+# cvss 제거
+# 노션 database 에서 제공하는 기능적 한계로 인해 flat 하게 넘김
 def get_advisories(*dates):
     """
     Github Advisories 를 최신 30건 조회하고 파싱하여 리턴하는 함수
@@ -146,7 +148,7 @@ def get_advisories(*dates):
             raise RuntimeError("github advisory endpoint 확인 필요")
 
         # 재시도 횟수
-        retry = CONFIG.get("max_retry")
+        retry = CONFIG.get("max_retry", 3)
 
         # github 통신
         response = get_connection(end_point, retry, *dates)
@@ -182,7 +184,7 @@ def get_advisories(*dates):
                         # "package_version_range"
                         # "reason"- cwes.name 
                         # cvss_severities
-                        "cvss_score" : cvss_score
+                        #"cvss_score" : cvss_score
                     }
                 )
 
