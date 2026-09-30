@@ -154,6 +154,91 @@ class DashboardResultsTests(unittest.TestCase):
         self.assertIn("&lt;b&gt;service&lt;/b&gt;", response.text)
         self.assertNotIn("<script>alert(1)</script>", response.text)
 
+    def test_each_severity_filters_html_and_api_without_changing_total_counts(self):
+        for severity, number in (("critical", 2), ("high", 3), ("medium", 4),
+                                 ("low", 5), ("safe", 1), ("unknown", 6)):
+            with self.subTest(severity=severity):
+                response = self.client.get("/results", query_string={"severity": severity})
+                self.assertEqual(response.status_code, 200)
+                self.assertIn(f"package-{number:03}", response.text)
+                for other in set(range(1, 7)) - {number}:
+                    self.assertNotIn(f"package-{other:03}", response.text)
+                self.assertIn("1개 표시 / 저장된 패키지 6개", response.text)
+                data = self.client.get("/api/results", query_string={"severity": severity}).get_json()
+                self.assertEqual(data["severity"], severity)
+                self.assertEqual((data["package_count"], data["affected_count"], data["filtered_count"]), (6, 4, 1))
+                self.assertEqual([row["package_id"] for row in data["results"]], [f"PKG-{number:03}"])
+                self.assertEqual(data["severity_counts"]["all"], 6)
+                self.assertEqual(data["severity_counts"][severity], 1)
+        self.notion.return_value.create_database_row.assert_not_called()
+        self.notion.return_value.update_database_rows.assert_not_called()
+
+    def test_unknown_filter_includes_blank_and_unrecognized_saved_values(self):
+        self.data["packages"] = [self.package(1, None), self.package(2, ""),
+                                 self.package(3, "review"), self.package(4, "all"),
+                                 self.package(5, "safe")]
+        data = self.client.get("/api/results?severity=unknown").get_json()
+        self.assertEqual(data["filtered_count"], 4)
+        self.assertEqual({row["package_id"] for row in data["results"]},
+                         {"PKG-001", "PKG-002", "PKG-003", "PKG-004"})
+        self.assertEqual(data["severity_counts"]["safe"], 1)
+
+    def test_filter_normalizes_saved_values_and_query_and_invalid_query_shows_all(self):
+        self.data["packages"] = [self.package(1, " HIGH "), self.package(2, "safe")]
+        data = self.client.get("/api/results", query_string={"severity": " HIGH "}).get_json()
+        self.assertEqual(data["severity"], "high")
+        self.assertEqual(data["filtered_count"], 1)
+        self.assertEqual(data["results"][0]["package_id"], "PKG-001")
+        for value in ("all", "", "invalid"):
+            with self.subTest(value=value):
+                response = self.client.get("/results", query_string={"severity": value})
+                self.assertIn("package-001", response.text)
+                self.assertIn("package-002", response.text)
+                self.assertIn('aria-current="true">전체 <span>2</span>', response.text)
+
+    def test_filter_applies_before_pagination_and_survives_next_and_refresh(self):
+        self.data["packages"] = [self.package(i, "high") for i in range(1, 56)] + [self.package(100, "safe")]
+        first = self.client.get("/results?severity=high")
+        last = self.client.get("/results?severity=high&page=2")
+        self.assertIn("필터 결과 55개 중 1–50개", first.text)
+        self.assertIn('href="/results?page=2&amp;severity=high#results"', first.text)
+        self.assertIn("필터 결과 55개 중 51–55개", last.text)
+        self.assertIn("package-055", last.text)
+        self.assertNotIn("package-050", last.text)
+        self.assertNotIn("package-100", last.text)
+        self.assertIn('href="/results?severity=high&amp;page=2"', last.text)
+        self.assertIn('href="/results?severity=safe"', last.text)
+        self.assertIn('href="/results">전체 <span>56</span>', last.text)
+        clamped = self.client.get("/results?severity=safe&page=999")
+        self.assertIn("package-100", clamped.text)
+        self.assertIn("1개 표시 / 저장된 패키지 56개", clamped.text)
+
+    def test_no_matching_results_are_distinct_from_empty_database_and_query_failure(self):
+        self.data["packages"] = [self.package(1, "safe")]
+        response = self.client.get("/results?severity=critical")
+        self.assertIn("선택한 취약도에 해당하는 패키지가 없습니다.", response.text)
+        self.assertIn("0개 표시 / 저장된 패키지 1개", response.text)
+        self.assertNotIn("등록된 서비스 패키지가 없습니다.", response.text)
+        self.assertIn('href="/results">전체 목록 보기</a>', response.text)
+        self.data["packages"] = []
+        empty = self.client.get("/results?severity=critical")
+        self.assertIn("등록된 서비스 패키지가 없습니다.", empty.text)
+        self.fail_sources.add("packages")
+        with self.assertLogs(self.web.__name__, level="WARNING"):
+            failed = self.client.get("/results?severity=critical")
+            api = self.client.get("/api/results?severity=critical")
+        self.assertIn("패키지 취약도를 불러오지 못했습니다.", failed.text)
+        self.assertNotIn("0개 표시", failed.text)
+        self.assertNotIn("선택한 취약도에 해당하는 패키지가 없습니다.", failed.text)
+        self.assertIsNone(api.get_json()["filtered_count"])
+        self.assertIsNone(api.get_json()["severity_counts"])
+
+    def test_main_dashboard_summary_is_not_filtered_by_results_tab_parameter(self):
+        response = self.client.get("/?severity=safe")
+        self.assertIn('aria-label="취약 상태로 저장된 패키지 4개">4</p>', response.text)
+        self.assertIn("package-002", response.text)
+        self.assertNotIn('aria-label="취약도 필터"', response.text)
+
 
 if __name__ == "__main__":
     unittest.main()

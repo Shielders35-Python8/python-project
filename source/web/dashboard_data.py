@@ -1,6 +1,27 @@
 """Notion에 저장된 패키지 취약도를 화면용으로 정리한다. 분석이나 저장은 실행하지 않는다."""
 
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+RESULT_SEVERITY_FILTERS = {
+    "all": "전체", "critical": "critical", "high": "high", "medium": "medium",
+    "low": "low", "safe": "safe", "unknown": "미설정/기타",
+}
+
+
+def filter_saved_package_results(results: list[dict], severity: str | None = None) -> dict:
+    """전체 저장값의 등급별 건수를 유지하며 페이지를 나누기 전에 필터링한다."""
+    selected = (severity or "all").strip().lower()
+    if selected not in RESULT_SEVERITY_FILTERS:
+        selected = "all"
+    counts = dict.fromkeys(RESULT_SEVERITY_FILTERS, 0)
+    counts["all"] = len(results)
+    filtered = []
+    for result in results:
+        value = (result.get("vulnerability") or "").strip().lower()
+        bucket = value if value in SEVERITY_ORDER or value == "safe" else "unknown"
+        counts[bucket] += 1
+        if selected == "all" or selected == bucket:
+            filtered.append(result)
+    return {"severity": selected, "results": filtered, "counts": counts}
 
 
 def build_saved_package_results(services: list[dict], packages: list[dict]) -> list[dict]:

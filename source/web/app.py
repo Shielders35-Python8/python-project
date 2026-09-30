@@ -17,7 +17,9 @@ from source.common.notion.notion import NotionClient
 from source.common.slack.notifications import init_app
 from source.config.config import get_env
 from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
-from source.web.dashboard_data import build_saved_package_results
+from source.web.dashboard_data import (
+    RESULT_SEVERITY_FILTERS, build_saved_package_results, filter_saved_package_results,
+)
 from source.web.advisory_list import build_saved_advisories
 
 
@@ -104,13 +106,25 @@ def create_app() -> Flask:
                 app.logger.warning("Notion 공지 조회 실패: %s", type(error).__name__)
                 advisory_error = "Notion 공지 조회 실패 · 새로고침해 주세요."
         service_data = load_service_results() if active_page in ("dashboard", "results") else {}
-        results = service_data.get("results", [])
+        filtered = filter_saved_package_results(
+            service_data.get("results", []),
+            request.args.get("severity") if active_page == "results" else None,
+        )
+        results = filtered["results"]
+        selected_severity = filtered["severity"]
         page_size = 50
         page_count = max(1, (len(results) + page_size - 1) // page_size)
         page = min(max(1, request.args.get("page", 1, type=int)), page_count)
         return render_template(
             "index.html",
             **service_data,
+            result_severity=selected_severity,
+            result_severity_label=RESULT_SEVERITY_FILTERS[selected_severity],
+            filtered_result_count=len(results) if not service_data.get("results_error") else None,
+            result_filter_options=[{
+                "value": value, "label": label,
+                "count": filtered["counts"][value] if not service_data.get("results_error") else None,
+            } for value, label in RESULT_SEVERITY_FILTERS.items()],
             visible_results=results[(page - 1) * page_size:page * page_size],
             result_page=page,
             result_page_count=page_count,
@@ -210,11 +224,16 @@ def create_app() -> Flask:
     @app.get("/api/results")
     def get_results():
         data = load_service_results()
+        filtered = filter_saved_package_results(data["results"], request.args.get("severity"))
+        data["results"] = filtered["results"]
         status = "error" if data["results_error"] else "partial" if data["service_error"] else "ok"
         return jsonify(
             status=status,
             source="notion",
             result_type="saved_package_vulnerability",
+            severity=filtered["severity"],
+            filtered_count=len(data["results"]) if not data["results_error"] else None,
+            severity_counts=filtered["counts"] if not data["results_error"] else None,
             message=data["results_error"] or data["service_error"] or "Notion에 저장된 패키지 취약도입니다.",
             **data,
         ), 503 if data["results_error"] else 200

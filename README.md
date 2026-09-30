@@ -129,16 +129,25 @@ source/web/
 | 경로 | 메서드 | 용도 |
 | --- | --- | --- |
 | `/` | GET | 실행 상태와 분석 결과를 표시할 기본 화면 |
+| `/results` | GET | 저장된 패키지 취약도 목록 및 취약도 필터 |
 | `/advisories` | GET | Notion 공지의 심각도·생태계·게시 추이·패키지별 통계 |
 | `/api/advisories/analysis` | GET | 공지 분석 통계 JSON 및 게시일 기간 필터 |
 | `/api/health` | GET | 웹 서버 응답 확인 |
-| `/api/results` | GET | Notion에 저장된 서비스 패키지 취약도 조회 |
+| `/api/results` | GET | Notion에 저장된 서비스 패키지 취약도 조회 및 취약도 필터 |
 | `/api/run` | POST | 실행 연결 지점. 현재 HTTP 501과 `not_implemented` 반환 |
 
 대시보드와 분석 결과는 Notion에 저장된 서비스 패키지 취약도를 조회하며,
 공지 분석 탭은 저장된 공지 데이터를 집계합니다. 실행 버튼은 비활성 상태로,
 GitHub 공지 수집·서비스 영향 평가·DB 저장을 연결하는 작업 실행 기능은 아직 제공하지 않습니다.
 기존 대시보드에서 조회하지 못한 값은 `—`로 표시합니다.
+
+분석 결과 탭에서 전체·critical·high·medium·low·safe·미설정/기타를 선택할 수 있습니다.
+필터는 목록 전체에 적용한 뒤 50개씩 표시하며, 페이지 이동과 새로고침에도 유지됩니다.
+`/results?severity=high`와 `/api/results?severity=high`처럼 같은 조건으로 조회할 수 있습니다.
+`severity`는 `all`, `critical`, `high`, `medium`, `low`, `safe`, `unknown`을 지원하며,
+생략하거나 잘못된 값을 전달하면 전체를 표시합니다. `unknown`은 빈 값과 그 외 저장 상태를 포함합니다.
+API의 `results`와 `filtered_count`는 선택한 조건의 결과이며, `package_count`와
+`severity_counts`는 전체 저장 데이터 기준입니다. 조회 실패 시 건수는 `null`로 반환합니다.
 
 ## 공지 분석 대시보드
 
