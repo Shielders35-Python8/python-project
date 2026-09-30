@@ -3,7 +3,7 @@ import re
 from source.common.notion.notion import NotionClient
 from source.config.config import get_env
 from source.common.slack.notifications import notify_errors
-from source.common.slack.slack import send_task_message
+from source.common.slack.slack import send_task_message, send_cron_job_summary
 
 
 @notify_errors("취약도 분석")
@@ -100,3 +100,7 @@ def evaluate_impact(started_at, ended_at):
         "Notion 결과 반영을 완료했습니다.",
         task_name="취약도 분석",
     )
+
+    # 기존 알림이 끝난 직후, High/Critical 취약점 목록을 Slack으로 쏜다.
+    matched_advisories = [match["advisory"] for match in matches]
+    send_cron_job_summary(matched_advisories)

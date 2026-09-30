@@ -85,3 +85,85 @@ def send_task_message(message: str, *, task_name: str | None = None) -> bool:
     비어 있거나 문자열이 아닌 message는 ValueError를 발생시킨다.
     """
     return _send_message(_format_message("작업", message, task_name))
+
+
+SEVERITY_EMOJI = {
+    "CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡",
+    "MODERATE": "🟡", "LOW": "🟢", "UNKNOWN": "⚪",
+}
+
+SOURCE_LABEL = {
+    "kisa_security_notice": "KISA 보호나라 · 보안공지",
+    "kisa_vulnerability": "KISA 보호나라 · 취약점 정보",
+    "nvd": "NVD", "github_advisory": "GitHub Advisory",
+}
+
+def _send_blocks_payload(text_fallback: str, blocks: list) -> bool:
+    """예쁘게 꾸며진 Block Kit 알림을 보내기 위한 전용 전송 함수"""
+    webhook_url = os.getenv("SLACK_WEBHOOK_URL", "").strip()
+    if not webhook_url:
+        logger.error("슬랙 전송 실패: SLACK_WEBHOOK_URL이 없습니다.")
+        return False
+        
+    try:
+        response = requests.post(
+            webhook_url,
+            json={"text": text_fallback, "blocks": blocks},
+            timeout=10,
+            allow_redirects=False,
+        )
+        if response.status_code != 200 or response.text.strip() != "ok":
+            logger.error("슬랙 UI 블록 전송 실패 (HTTP %s)", response.status_code)
+            return False
+        return True
+    except requests.RequestException as e:
+        logger.error("슬랙 UI 블록 전송 실패: %s", type(e).__name__)
+        return False
+
+def send_cron_job_summary(raw_advisories: list) -> bool:
+    """[요구사항 1] 영향도 High 목록 산출 완료 시 전송"""
+    if not raw_advisories:
+        return True
+        
+    total_count = len(raw_advisories)
+    high_advisories = [
+        item for item in raw_advisories 
+        if (item.get("severity") or "").lower() in ["high", "critical"]
+    ]
+    high_count = len(high_advisories)
+    
+    if high_count == 0:
+        list_text = "• High/Critical 위험 항목 없음"
+    else:
+        lines = []
+        for item in high_advisories[:10]:
+            emoji = SEVERITY_EMOJI.get((item.get("severity") or "UNKNOWN").upper(), "⚪")
+            source = item.get("source", "unknown")
+            label = SOURCE_LABEL.get(source, source)
+            vuln_id = item.get("cve_id") or item.get("id", "N/A")
+            title = item.get("title", "제목 없음")
+            url = item.get("url", "")
+            
+            title_link = f"<{url}|{title}>" if url else title
+            lines.append(f"{emoji} *[{label}]* `{vuln_id}` - {title_link}")
+            
+        if high_count > 10:
+            lines.append(f"\n_... 외 {high_count - 10}건의 High/Critical 항목이 더 존재합니다._")
+        list_text = "\n\n".join(lines)
+        
+    blocks = [
+        {"type": "header", "text": {"type": "plain_text", "text": "🚨 [보안 점검] 영향도 High 목록 산출 완료", "emoji": True}},
+        {"type": "section", "fields": [{"type": "mrkdwn", "text": f"*총 수집 취약점:* {total_count} 건"}, {"type": "mrkdwn", "text": f"*High/Critical 취약점:* *{high_count} 건*"}]},
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"*주요 High 취약점 목록:*\n{list_text[:2900]}"}},
+        {"type": "divider"}
+    ]
+    
+    return _send_blocks_payload(f"🚨 신규 High/Critical 취약점 {high_count}건 발견", blocks)
+
+def send_mock_status_changed(asset_name: str, vuln_id: str, old_status: str = "Active", new_status: str = "inActive") -> bool:
+    """[요구사항 2] Mock 데이터 상태 변경 완료 시 전송"""
+    blocks = [
+        {"type": "section", "text": {"type": "mrkdwn", "text": f"🔄 *[Mock 데이터 상태 변경 완료]*\n취약점 영향도 평가에 따라 자산 운영 상태가 변경되었습니다.\n\n• *대상 자산:* {asset_name}\n• *원인 취약점:* `{vuln_id}`\n• *상태 변경:* `{old_status}` ➔ *`{new_status}`*"}},
+        {"type": "divider"}
+    ]
+    return _send_blocks_payload(f"🔄 자산 상태 변경: {asset_name}", blocks)
