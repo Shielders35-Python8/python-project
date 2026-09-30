@@ -2,6 +2,7 @@ from notion_client import Client
 from notion_client.helpers import iterate_paginated_api
 
 from source.config.config import get_env
+from source.common.slack.notifications import notify_errors
 
 
 def _parse_property_value(property_value: dict):
@@ -28,9 +29,11 @@ def _parse_property_value(property_value: dict):
 
 
 class NotionClient:
+    @notify_errors("Notion 연결")
     def __init__(self):
         self.client = Client(auth=get_env("NOTION_TOKEN"))
 
+    @notify_errors("Notion 데이터베이스 생성")
     def create_database(
         self,
         parent_page_id: str,
@@ -59,6 +62,29 @@ class NotionClient:
             is_inline=is_inline,
         )
 
+    @notify_errors("Notion 행 생성")
+    def create_database_row(self, data_source_id: str, properties: dict) -> dict:
+        """데이터 소스에 새 행(노션 페이지) 하나를 생성한다.
+
+        Args:
+            data_source_id: 행을 추가할 데이터 소스 ID (데이터베이스 ID와 다름).
+            properties: 컬럼 이름과 값을 담은 Notion 형식의 딕셔너리.
+                대상 데이터 소스의 컬럼 타입에 맞춰 전달한다.
+                관계형 값에는 연결할 행의 실제 노션 페이지 ID를 사용한다.
+
+        Returns:
+            생성된 노션 페이지 응답. id는 노션이 발급한 실제 페이지 ID이며,
+            이후 관계 연결과 행 업데이트에 사용한다.
+
+        Raises:
+            APIResponseError: 노션 API 요청이 실패한 경우.
+        """
+        return self.client.pages.create(
+            parent={"type": "data_source_id", "data_source_id": data_source_id},
+            properties=properties,
+        )
+
+    @notify_errors("Notion 데이터 조회")
     def get_database_rows(
         self,
         data_source_id: str,
@@ -110,6 +136,7 @@ class NotionClient:
             rows.append(row)
         return rows
 
+    @notify_errors("Notion 결과 저장")
     def update_database_rows(self, page_id: str, properties: dict) -> dict:
         """노션 행의 지정한 컬럼을 업데이트한다.
 

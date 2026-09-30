@@ -2,11 +2,14 @@
 프로젝트 메인 스크립트
 """
 
-import os
-from dotenv import load_dotenv
+from source.common.slack.notifications import install_error_notifications, notify_errors
+
+install_error_notifications()
+
 from source.common.github_advisory.advisories import get_advisories, example_method
 
 
+@notify_errors("프로젝트 실행")
 def main():
 
     print("="*40)

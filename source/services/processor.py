@@ -2,8 +2,11 @@ import re
 
 from source.common.notion.notion import NotionClient
 from source.config.config import get_env
+from source.common.slack.notifications import notify_errors
+from source.common.slack.slack import send_task_message
 
 
+@notify_errors("취약도 분석")
 def evaluate_impact(started_at, ended_at):
     """노션 db에서 가져온 service-package테이블의 데이터와 advisories테이블의 데이터를 비교한다
     각 advisories 마다 "package_name", "package_version_range", "ecosystem" 과 service_package의 "package_name", "package_version", "ecosystem"을 비교하고
@@ -87,3 +90,13 @@ def evaluate_impact(started_at, ended_at):
                 "vulnerability": {"select": {"name": match["advisory"]["severity"]}}
             },
         )
+
+    affected_packages = {match["service_package"]["page_id"] for match in matches}
+    send_task_message(
+        "취약도 분석이 완료되었습니다.\n"
+        f"분석 기간: {started_at} ~ {ended_at}\n"
+        f"공지 {len(advisories)}건 / 검사 패키지 {len(service_packages)}개 / "
+        f"취약점 일치 {len(matches)}건 / 영향 패키지 {len(affected_packages)}개\n"
+        "Notion 결과 반영을 완료했습니다.",
+        task_name="취약도 분석",
+    )

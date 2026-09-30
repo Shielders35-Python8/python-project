@@ -1,8 +1,10 @@
 import json, time
 from dotenv import load_dotenv
 import os
+from source.common.slack.notifications import notify_errors
 
 
+@notify_errors("서버 설정 로딩")
 def load_config():
     """
     source/config/config.json 의 config 를 조회하는 함수

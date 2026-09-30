@@ -16,6 +16,11 @@ from collections import Counter
 from datetime import datetime
 
 from flask import Flask, redirect, render_template, url_for
+from source.common.slack.notifications import init_app, notify_errors, report_error
+from source.common.slack.slack import send_task_message
+
+app = Flask(__name__)
+init_app(app)
 
 import source.common.github_advisory.advisories as advisory_module
 
@@ -30,7 +35,7 @@ advisory_module.make_response_json = lambda data: None
 # ---------------------------------------------------------------
 # 1. 데이터 읽기
 # ---------------------------------------------------------------
-def load_mock(file_name):
+def load_mock(file_name, *, raise_on_error=False):
     """mock json 파일 하나를 읽어 리스트로 돌려준다. 실패하면 빈 리스트."""
     path = f"{MOCK_DIR}/{file_name}"
     try:
@@ -38,6 +43,9 @@ def load_mock(file_name):
             return json.load(file)
     except (OSError, json.JSONDecodeError) as e:
         print("mock load error > ", path, e)
+        report_error(f"미리보기 데이터 읽기에 실패했습니다: {file_name}", e, task_name="미리보기")
+        if raise_on_error:
+            raise
         return []
 
 
@@ -88,7 +96,8 @@ def has_package_info(advisories):
 # ---------------------------------------------------------------
 # 3. 영향 분석 : 공지 × 서비스 패키지 비교
 # ---------------------------------------------------------------
-def analyze(advisories, services, packages):
+@notify_errors("미리보기 취약도 분석")
+def analyze(advisories, services, packages, *, notify_completion=False):
     service_by_page = {s["page_id"]: s for s in services}
     results = []
     for advisory in advisories:
@@ -114,21 +123,28 @@ def analyze(advisories, services, packages):
     importance_rank = {"High": 0, "Medium": 1, "Low": 2}
     results.sort(key=lambda r: (SEVERITY_ORDER.index(r["severity"]) if r["severity"] in SEVERITY_ORDER else 9,
                                 importance_rank.get(r["importance"], 9)))
+    if notify_completion:
+        send_task_message(
+            "미리보기 취약도 분석이 완료되었습니다 (mock 서비스·패키지 기준).\n"
+            f"공지 {len(advisories)}건 / 검사 패키지 {len(packages)}개 / 취약점 일치 {len(results)}건.",
+            task_name="미리보기 취약도 분석",
+        )
     return results
 
 
-def build_page_data():
-    services = load_mock("service_mock.json")
-    packages = load_mock("service_package_mock.json")
+def build_page_data(*, notify_completion=False):
+    services = load_mock("service_mock.json", raise_on_error=notify_completion)
+    packages = load_mock("service_package_mock.json", raise_on_error=notify_completion)
     news = STATE["news"]
 
     # 영향 분석에 쓸 공지 : 패키지 정보가 있으면 가져온 공지, 없으면 mock 공지
     if has_package_info(news):
         analysis_advisories, analysis_source = news, STATE["news_source"]
     else:
-        analysis_advisories, analysis_source = load_mock("advisories_mock.json"), "mock"
+        analysis_advisories = load_mock("advisories_mock.json", raise_on_error=notify_completion)
+        analysis_source = "mock"
 
-    results = analyze(analysis_advisories, services, packages)
+    results = analyze(analysis_advisories, services, packages, notify_completion=notify_completion)
 
     # 공지 카드에 "우리 서비스 영향" 표시를 붙이기 위한 집합
     hit_ids = {r["advisory_id"] for r in results}
@@ -213,9 +229,6 @@ def build_page_data():
 # ---------------------------------------------------------------
 # 4. Flask 라우트
 # ---------------------------------------------------------------
-app = Flask(__name__)
-
-
 @app.get("/")
 def preview():
     return render_template("preview.html", **build_page_data())
@@ -233,6 +246,8 @@ def fetch_advisories():
         else:
             STATE["message"] = (f"GitHub 에서 최신 공지 {len(live)}건을 가져왔습니다. "
                                 "응답에 패키지·버전 범위가 아직 없어 영향 분석은 mock 공지 기준입니다.")
+        # 가져오기 작업에 대해서만 완료 알림을 보내고 화면 새로고침에서는 보내지 않는다.
+        build_page_data(notify_completion=True)
     else:
         STATE["message"] = "가져오기에 실패했습니다 (네트워크 또는 요청 제한). 기존 목록을 유지합니다. 터미널 로그를 확인하세요."
     return redirect(url_for("preview"))
