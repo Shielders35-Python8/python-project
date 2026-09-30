@@ -51,6 +51,7 @@ def build_service_package_schema(service_data_source_id: str) -> dict:
             "select": {
                 "options": [
                     {"name": "safe"},
+                    {"name": "unknown"},
                     {"name": "low"},
                     {"name": "medium"},
                     {"name": "high"},

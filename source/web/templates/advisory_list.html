@@ -1,0 +1,83 @@
+<section class="results-section advisory-list" id="advisory-list" aria-labelledby="advisory-list-heading">
+  <div class="section-header">
+    <h2 id="advisory-list-heading">저장된 공지{% if advisory_count is not none %} <span class="advisory-total">{{ advisory_count }}건</span>{% endif %}</h2>
+    <a class="refresh-link" href="{{ cache_refresh_url or url_for('security_advisories') }}">
+      <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M16.5 7A7 7 0 1 0 17 11M16.5 3v4h-4"/></svg>
+      새로고침
+    </a>
+  </div>
+  <p class="muted advisory-list-caption">최신 게시일순 · 같은 공지의 패키지별 취약 범위를 함께 표시합니다. 날짜는 UTC 기준입니다.</p>
+  <p class="table-hint">표를 좌우로 스크롤해 모든 항목을 확인하세요.</p>
+  <div class="table-wrapper" role="region" aria-label="Notion 보안 공지 목록" tabindex="0">
+    <table>
+      <caption class="sr-only">Notion에 저장된 보안 공지와 패키지별 취약 버전 범위</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="row-number"><span aria-hidden="true">#</span><span class="sr-only">번호</span></th>
+          <th scope="col">보안 공지</th>
+          <th scope="col">심각도</th>
+          <th scope="col">패키지 · 취약 버전 범위</th>
+          <th scope="col">게시일</th>
+          <th scope="col">갱신일</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for advisory in visible_advisories %}
+        <tr>
+          <td class="row-number">{{ advisory_start + loop.index }}</td>
+          <td class="advisory-title-cell">
+            {% if advisory.url %}
+            <a class="advisory-source" href="{{ advisory.url }}" target="_blank" rel="noopener noreferrer" aria-label="{{ advisory.title }} 원문 (새 탭)">{{ advisory.title }} <span aria-hidden="true">↗</span></a>
+            {% else %}
+            <strong>{{ advisory.title }}</strong>
+            {% endif %}
+            <p class="mono muted advisory-identifiers">{{ advisory.id or '공지 ID 미설정' }}{% if advisory.cve_id %}<br>{{ advisory.cve_id }}{% endif %}</p>
+          </td>
+          <td>
+            {% if advisory.severity_kind in ['critical', 'high'] %}
+            <span class="result-badge is-affected">{{ advisory.severity }}</span>
+            {% elif advisory.severity_kind == 'medium' %}
+            <span class="result-badge is-pending">{{ advisory.severity }}</span>
+            {% else %}
+            <span class="result-badge is-unaffected">{{ advisory.severity or '미설정' }}</span>
+            {% endif %}
+          </td>
+          <td class="advisory-package-cell">
+            <ul class="advisory-packages">
+              {% for package in advisory.packages %}
+              <li><strong>{{ package.package_name or '패키지명 미설정' }}</strong><span class="muted">{{ package.ecosystem or '생태계 미설정' }} · <span class="mono">{{ package.package_version_range or '취약 범위 미설정' }}</span></span></li>
+              {% else %}
+              <li class="muted">패키지 정보가 없습니다.</li>
+              {% endfor %}
+            </ul>
+          </td>
+          <td class="mono advisory-date">{{ advisory.published_date or '—' }}</td>
+          <td class="mono advisory-date">{{ advisory.updated_date or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="6" class="empty-state">
+            <svg viewBox="0 0 32 32" width="32" height="32" aria-hidden="true"><path d="M9 4h10l5 5v19H8V4h1Zm10 0v6h5M12 15h8m-8 5h5"/></svg>
+            {% if advisory_error %}
+            <strong>보안 공지를 불러오지 못했습니다.</strong>
+            <span role="status">{{ advisory_error }}</span>
+            {% else %}
+            <strong>Notion에 저장된 공지가 없습니다.</strong>
+            <span>공지 DB에 데이터가 저장되면 새로고침해 목록을 확인할 수 있습니다.</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if advisory_page_count > 1 %}
+  <nav class="pagination" aria-label="보안 공지 목록 페이지">
+    <p class="muted">전체 {{ advisory_count }}건 중 {{ advisory_start + 1 }}–{{ advisory_start + visible_advisories|length }}건 · {{ advisory_page }} / {{ advisory_page_count }}페이지</p>
+    <div>
+      {% if advisory_page > 1 %}<a class="refresh-link" href="{{ url_for('security_advisories', page=advisory_page - 1) }}#advisory-list">이전</a>{% endif %}
+      {% if advisory_page < advisory_page_count %}<a class="refresh-link" href="{{ url_for('security_advisories', page=advisory_page + 1) }}#advisory-list">다음</a>{% endif %}
+    </div>
+  </nav>
+  {% endif %}
+</section>
