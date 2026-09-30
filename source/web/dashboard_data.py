@@ -3,7 +3,7 @@
 SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 RESULT_SEVERITY_FILTERS = {
     "all": "전체", "critical": "critical", "high": "high", "medium": "medium",
-    "low": "low", "safe": "safe", "unknown": "미설정/기타",
+    "low": "low", "safe": "safe", "unknown": "알 수 없음/기타",
 }
 
 
@@ -46,6 +46,7 @@ def build_saved_package_results(services: list[dict], packages: list[dict]) -> l
             "ecosystem": package.get("ecosystem"),
             "installed_version": package.get("package_version"),
             "vulnerability": vulnerability,
+            "vulnerability_label": "알 수 없음" if severity == "unknown" else (vulnerability or "미설정"),
             "is_affected": severity in SEVERITY_ORDER,
             "status_kind": "affected" if severity in SEVERITY_ORDER else (
                 "safe" if severity == "safe" else "unknown"

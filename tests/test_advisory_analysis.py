@@ -121,7 +121,7 @@ class AdvisoryDashboardTests(unittest.TestCase):
         self.notion = self.enterContext(patch.object(self.web, "NotionClient"))
         self.rows = self.notion.return_value.get_database_rows
         self.rows.return_value = [notice(), notice(package_name="second")]
-        self.client = self.web.create_app().test_client()
+        self.client = self.web.create_app({"DASHBOARD_CACHE_ENABLED": False}).test_client()
 
     def test_tab_queries_only_advisories_and_renders_all_charts(self):
         response = self.client.get("/advisories")

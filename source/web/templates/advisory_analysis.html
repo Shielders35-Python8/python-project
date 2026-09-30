@@ -12,7 +12,7 @@
 <div class="analysis-empty" role="alert">
   <strong>공지 분석을 표시할 수 없습니다.</strong>
   <p>{{ analysis_error }}</p>
-  <a class="refresh-link" href="{{ url_for('advisory_dashboard', **filters) }}">다시 조회</a>
+  <a class="refresh-link" href="{{ url_for('advisory_dashboard', refresh=1, **filters) }}">다시 조회</a>
 </div>
 {% elif analysis %}
 {% set summary = analysis.summary %}
@@ -37,7 +37,7 @@
 
 <div class="analysis-context">
   <p>Notion 저장 공지 {{ analysis.total_advisory_count }}건 중 {{ summary.advisory_count }}건 표시{% if analysis.period_start %}<span>게시일 {{ analysis.period_start }} ~ {{ analysis.period_end }}</span>{% endif %}</p>
-  <a class="refresh-link" href="{{ url_for('advisory_dashboard', **filters) }}">새로고침 ↻</a>
+  <a class="refresh-link" href="{{ url_for('advisory_dashboard', refresh=1, **filters) }}">새로고침 ↻</a>
 </div>
 {% if analysis.excluded_undated_count %}
 <p class="data-notice" role="status">게시일을 확인할 수 없는 공지 {{ analysis.excluded_undated_count }}건은 기간 조회에서 제외했습니다. 전체 기간에서 확인할 수 있습니다.</p>

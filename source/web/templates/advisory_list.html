@@ -1,7 +1,7 @@
 <section class="results-section advisory-list" id="advisory-list" aria-labelledby="advisory-list-heading">
   <div class="section-header">
     <h2 id="advisory-list-heading">저장된 공지{% if advisory_count is not none %} <span class="advisory-total">{{ advisory_count }}건</span>{% endif %}</h2>
-    <a class="refresh-link" href="{{ url_for('security_advisories') }}">
+    <a class="refresh-link" href="{{ cache_refresh_url or url_for('security_advisories') }}">
       <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M16.5 7A7 7 0 1 0 17 11M16.5 3v4h-4"/></svg>
       새로고침
     </a>

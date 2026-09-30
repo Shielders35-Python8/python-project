@@ -5,6 +5,7 @@ import subprocess
 import sys
 import threading
 import unittest
+from itertools import permutations
 from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -137,7 +138,7 @@ class AnalysisNotificationTests(NotificationTestCase):
         events = []
         self.notion.update_database_rows.side_effect = lambda **kwargs: events.append("save")
         self.send.side_effect = lambda message: events.append("notify") or True
-        self.assertIsNone(processor.evaluate_impact("2026-09-01", "2026-09-30"))
+        self.assertEqual(processor.evaluate_impact("2026-09-01", "2026-09-30")["updated_count"], 1)
         self.assertEqual(events, ["save", "notify"])
         self.assertIn("영향 패키지 1개", self.messages()[0])
         self.assertIn("2026-09-01 ~ 2026-09-30", self.messages()[0])
@@ -147,6 +148,113 @@ class AnalysisNotificationTests(NotificationTestCase):
         processor.evaluate_impact("2026-09-01", "2026-09-30")
         self.notion.update_database_rows.assert_not_called()
         self.assertIn("취약점 일치 0건", self.messages()[0])
+
+    def test_highest_severity_is_saved_once_regardless_of_advisory_order(self):
+        severities = ("low", "medium", "high", "critical")
+        for size in range(1, len(severities) + 1):
+            for order in permutations(severities[:size]):
+                with self.subTest(order=order):
+                    self.notion.update_database_rows.reset_mock()
+                    self.send.reset_mock()
+                    self.notion.get_database_rows.side_effect = [
+                        [dict(self.advisory, severity=value) for value in order],
+                        [self.package],
+                    ]
+                    processor.evaluate_impact("2026-09-01", "2026-09-30")
+                    self.notion.update_database_rows.assert_called_once_with(
+                        page_id="page-1",
+                        properties={"vulnerability": {"select": {"name": severities[size - 1]}}},
+                    )
+                    self.assertIn(f"취약점 일치 {size}건 / 영향 패키지 1개", self.messages()[0])
+
+    def test_uncomparable_version_or_range_is_saved_as_unknown(self):
+        for version, expression in (("1.0", "< 2.0-rc.1"), ("1.0-beta.1", "< 2.0"),
+                                    (None, "< 2.0"), ("1.0", None)):
+            with self.subTest(version=version, expression=expression):
+                self.notion.update_database_rows.reset_mock()
+                self.send.reset_mock()
+                self.notion.get_database_rows.side_effect = [
+                    [dict(self.advisory, package_version_range=expression)],
+                    [dict(self.package, package_version=version)],
+                ]
+                processor.evaluate_impact(None, None)
+                self.notion.update_database_rows.assert_called_once_with(
+                    page_id="page-1", properties={"vulnerability": {"select": {"name": "unknown"}}},
+                )
+                self.assertIn("영향 패키지 0개 / 알 수 없음 1개", self.messages()[0])
+
+    def test_unknown_does_not_hide_confirmed_highest_severity(self):
+        advisories = [dict(self.advisory, package_version_range="< 2.0-rc.1"),
+                      dict(self.advisory, severity="critical"), self.advisory]
+        for order in permutations(advisories):
+            self.notion.update_database_rows.reset_mock()
+            self.send.reset_mock()
+            self.notion.get_database_rows.side_effect = [list(order), [self.package]]
+            processor.evaluate_impact(None, None)
+            self.notion.update_database_rows.assert_called_once_with(
+                page_id="page-1", properties={"vulnerability": {"select": {"name": "critical"}}},
+            )
+            self.assertIn("영향 패키지 1개 / 알 수 없음 0개", self.messages()[0])
+
+    def test_multiple_unknown_ranges_save_once_even_with_a_numeric_nonmatch(self):
+        self.notion.get_database_rows.side_effect = [
+            [dict(self.advisory, package_version_range=value)
+             for value in ("< 2.0-rc.1", ">= 4.0-beta.1", "< 2.0")],
+            [dict(self.package, package_version="3.0")],
+        ]
+        processor.evaluate_impact(None, None)
+        self.notion.update_database_rows.assert_called_once_with(
+            page_id="page-1", properties={"vulnerability": {"select": {"name": "unknown"}}},
+        )
+
+    def test_unrelated_unsupported_ranges_do_not_mark_package_unknown(self):
+        self.notion.get_database_rows.side_effect = [
+            [dict(self.advisory, package_name="other", package_version_range="< 2.0-rc.1"),
+             dict(self.advisory, ecosystem="npm", package_version_range="< 2.0-rc.1")],
+            [self.package],
+        ]
+        processor.evaluate_impact(None, None)
+        self.notion.update_database_rows.assert_not_called()
+
+    def test_each_package_gets_its_own_highest_matching_severity(self):
+        self.notion.get_database_rows.side_effect = [
+            [dict(self.advisory, severity="critical"),
+             dict(self.advisory, severity="high", package_version_range="<3.0"),
+             dict(self.advisory, severity="low", package_version_range="<3.0")],
+            [self.package, dict(self.package, page_id="page-2", package_version="2.5")],
+        ]
+        processor.evaluate_impact("2026-09-01", "2026-09-30")
+        calls = self.notion.update_database_rows.call_args_list
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            {call.kwargs["page_id"]: call.kwargs["properties"]["vulnerability"]["select"]["name"]
+             for call in calls},
+            {"page-1": "critical", "page-2": "high"},
+        )
+        self.assertIn("취약점 일치 5건 / 영향 패키지 2개", self.messages()[0])
+
+    def test_duplicate_matches_and_severity_case_do_not_change_maximum(self):
+        self.notion.get_database_rows.side_effect = [
+            [dict(self.advisory, severity=value) for value in (" HIGH ", "high", "medium")],
+            [self.package],
+        ]
+        processor.evaluate_impact("2026-09-01", "2026-09-30")
+        self.notion.update_database_rows.assert_called_once_with(
+            page_id="page-1", properties={"vulnerability": {"select": {"name": "high"}}},
+        )
+
+    def test_invalid_matching_severity_stops_before_any_write(self):
+        for severity in (None, "", "unknown", "safe"):
+            with self.subTest(severity=severity):
+                self.send.reset_mock()
+                self.notion.get_database_rows.side_effect = [
+                    [self.advisory, dict(self.advisory, severity=severity)], [self.package],
+                ]
+                with self.assertRaises(ValueError):
+                    processor.evaluate_impact("2026-09-01", "2026-09-30")
+                self.notion.update_database_rows.assert_not_called()
+                self.assertEqual(len(self.messages()), 1)
+                self.assertTrue(self.messages()[0].startswith("[오류]"))
 
     def test_partial_update_failure_never_notifies_completion(self):
         other = dict(self.package, page_id="page-2")
@@ -297,12 +405,15 @@ class ServerNotificationTests(NotificationTestCase):
     def test_real_dashboard_app_has_notifications(self):
         app_module = importlib.import_module("source.web.app")
         app = app_module.create_app()
+        @app.get("/test-server-error")
+        def server_error():
+            return "error", 503
         client = app.test_client()
         self.assertEqual(client.get("/api/health").status_code, 200)
         self.send.assert_not_called()
-        self.assertEqual(client.post("/api/run").status_code, 501)
+        self.assertEqual(client.get("/test-server-error").status_code, 503)
         self.assertEqual(len(self.messages()), 1)
-        self.assertIn("POST /api/run: HTTP 501", self.messages()[0])
+        self.assertIn("GET /test-server-error: HTTP 503", self.messages()[0])
 
     def test_dashboard_direct_file_import_works_without_project_on_sys_path(self):
         # -I는 현재 디렉터리를 sys.path에서 제외한다. 실제 서버는 띄우지 않는다.

@@ -32,7 +32,7 @@ class DashboardResultsTests(unittest.TestCase):
         self.fail_sources = set()
         self.rows = self.notion.return_value.get_database_rows
         self.rows.side_effect = self.query
-        self.client = self.web.create_app().test_client()
+        self.client = self.web.create_app({"DASHBOARD_CACHE_ENABLED": False}).test_client()
 
     @staticmethod
     def package(number, vulnerability):
@@ -102,6 +102,18 @@ class DashboardResultsTests(unittest.TestCase):
         self.data["packages"] = [self.package(1, "review"), self.package(2, "")]
         data = self.client.get("/api/results").get_json()
         self.assertEqual((data["affected_count"], data["safe_count"], data["unknown_count"]), (0, 0, 2))
+
+    def test_explicit_unknown_is_labeled_and_filtered_without_becoming_safe(self):
+        self.data["packages"] = [self.package(1, "unknown"), self.package(2, "safe")]
+        data = self.client.get("/api/results?severity=unknown").get_json()
+        self.assertEqual((data["affected_count"], data["safe_count"], data["unknown_count"]), (0, 1, 1))
+        self.assertEqual(data["filtered_count"], 1)
+        self.assertEqual(data["results"][0]["vulnerability"], "unknown")
+        self.assertEqual(data["results"][0]["vulnerability_label"], "알 수 없음")
+        page = self.client.get("/results?severity=unknown")
+        self.assertIn('class="result-badge is-pending">알 수 없음</span>', page.text)
+        self.assertIn("package-001", page.text)
+        self.assertNotIn("package-002", page.text)
 
     def test_package_query_failure_is_distinct_from_no_findings(self):
         self.fail_sources.add("packages")
@@ -206,7 +218,7 @@ class DashboardResultsTests(unittest.TestCase):
         self.assertIn("package-055", last.text)
         self.assertNotIn("package-050", last.text)
         self.assertNotIn("package-100", last.text)
-        self.assertIn('href="/results?severity=high&amp;page=2"', last.text)
+        self.assertIn('href="/results?refresh=1&amp;severity=high&amp;page=2"', last.text)
         self.assertIn('href="/results?severity=safe"', last.text)
         self.assertIn('href="/results">전체 <span>56</span>', last.text)
         clamped = self.client.get("/results?severity=safe&page=999")

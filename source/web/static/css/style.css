@@ -57,6 +57,11 @@ h1 { font-size: clamp(28px, 3.7vw, 52px); font-weight: 800; letter-spacing: -0.0
 .run-action { padding-right: 28px; }
 .run-button { display: inline-flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 45px; border: none; border-radius: 0; background: var(--accent); color: #fff; font: inherit; font-size: 13px; font-weight: 700; }
 .run-button:disabled { background: #d76c42; cursor: not-allowed; }
+.run-button:not(:disabled) { cursor: pointer; }
+.run-button:not(:disabled):hover { background: #a83709; }
+.run-feedback { padding: 14px 0; font-size: 12px; }
+.run-feedback .muted { margin-top: 4px; }
+[hidden] { display: none !important; }
 .run-action p { margin-top: 5px; color: var(--muted); font-size: 10px; text-align: center; }
 .run-detail { display: flex; align-items: center; gap: 13px; border-left: 1px solid var(--line); padding: 4px 22px; min-height: 47px; }
 .detail-icon { width: 25px; height: 25px; fill: none; stroke: #65655c; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }

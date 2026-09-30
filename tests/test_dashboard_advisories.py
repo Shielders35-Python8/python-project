@@ -24,7 +24,7 @@ class DashboardAdvisoriesTests(unittest.TestCase):
         self.rows.side_effect = lambda *, data_source_id: (
             self.advisories if data_source_id == "advisories-data-source" else []
         )
-        self.client = self.web.create_app().test_client()
+        self.client = self.web.create_app({"DASHBOARD_CACHE_ENABLED": False}).test_client()
 
     def test_counts_distinct_notices_across_package_rows(self):
         self.advisories = [

@@ -1,3 +1,5 @@
+from functools import partial
+
 from notion_client import Client
 from notion_client.helpers import iterate_paginated_api
 
@@ -30,8 +32,9 @@ def _parse_property_value(property_value: dict):
 
 class NotionClient:
     @notify_errors("Notion 연결")
-    def __init__(self):
-        self.client = Client(auth=get_env("NOTION_TOKEN"))
+    def __init__(self, *, timeout_ms=60_000, query_policy=None):
+        self.client = Client(auth=get_env("NOTION_TOKEN"), timeout_ms=timeout_ms)
+        self.query_policy = query_policy
 
     @notify_errors("Notion 데이터베이스 생성")
     def create_database(
@@ -126,7 +129,10 @@ class NotionClient:
             query["filter"] = filters[0] if len(filters) == 1 else {"and": filters}
 
         rows = []
-        for page in iterate_paginated_api(self.client.data_sources.query, **query):
+        query_page = self.client.data_sources.query
+        if getattr(self, "query_policy", None) is not None:
+            query_page = partial(self.query_policy.call, query_page)
+        for page in iterate_paginated_api(query_page, **query):
             row = {
                 name: _parse_property_value(value)
                 for name, value in page["properties"].items()
@@ -147,4 +153,6 @@ class NotionClient:
         Returns:
             업데이트된 노션 페이지 응답. API 오류는 호출부로 전달한다.
         """
+        if getattr(self, "query_policy", None) is not None:
+            return self.query_policy.call(self.client.pages.update, page_id=page_id, properties=properties)
         return self.client.pages.update(page_id=page_id, properties=properties)

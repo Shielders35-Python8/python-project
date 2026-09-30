@@ -7,27 +7,62 @@
 import sys
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, current_app, g, has_app_context, jsonify, render_template, request, url_for
 
 # README에 안내한 파일 직접 실행 방식도 패키지 import가 가능하게 한다.
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from source.common.notion.notion import NotionClient
+from source.common.notion.query_policy import NotionQueryPolicy
 from source.common.slack.notifications import init_app
 from source.config.config import get_env
 from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
+from source.services.processor import evaluate_impact
+from source.web.analysis_runs import AnalysisRuns
 from source.web.dashboard_data import (
     RESULT_SEVERITY_FILTERS, build_saved_package_results, filter_saved_package_results,
 )
 from source.web.advisory_list import build_saved_advisories
+from source.web.data_cache import DashboardDataCache
+
+
+ADVISORIES = "NOTION_ADVISORIES_DATA_SOURCE_ID"
+SERVICES = "NOTION_SERVICE_DATA_SOURCE_ID"
+PACKAGES = "NOTION_SERVICE_PACKAGE_DATA_SOURCE_ID"
+PAGE_SOURCES = {
+    "dashboard": (SERVICES, PACKAGES, ADVISORIES),
+    "results": (SERVICES, PACKAGES),
+    "security_advisories": (ADVISORIES,),
+    "advisories": (ADVISORIES,),
+}
+PAGE_TITLES = {
+    "dashboard": "보안 공지 대시보드", "results": "분석 결과",
+    "security_advisories": "보안 공지", "advisories": "공지 분석",
+}
+ENDPOINT_PAGES = {
+    "dashboard": "dashboard", "analysis_results": "results", "get_results": "results",
+    "security_advisories": "security_advisories", "advisory_list_api": "security_advisories",
+    "advisory_dashboard": "advisories", "advisory_analysis_api": "advisories",
+}
 
 
 def get_saved_rows(env_key: str) -> list[dict]:
+    if has_app_context() and current_app.config["DASHBOARD_CACHE_ENABLED"]:
+        return current_app.extensions["dashboard_cache"].read(env_key)
+    return fetch_saved_rows(env_key)
+
+
+def fetch_saved_rows(env_key: str, query_policy=None) -> list[dict]:
     data_source_id = get_env(env_key).strip()
     if not data_source_id:
         raise ValueError("Notion 데이터 소스 ID가 필요합니다.")
-    return NotionClient().get_database_rows(data_source_id=data_source_id)
+    options = {"timeout_ms": 15_000, "query_policy": query_policy} if query_policy else {}
+    client = NotionClient(**options)
+    try:
+        return client.get_database_rows(data_source_id=data_source_id)
+    finally:
+        client.client.close()
 
 
 def get_saved_advisory_count() -> int:
@@ -46,11 +81,72 @@ def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
     )
 
 
-def create_app() -> Flask:
+def create_app(config=None) -> Flask:
     """웹 앱을 생성한다. 서버 시작 시 공지 수집을 실행하지 않는다."""
     app = Flask(__name__)
+    app.config.from_mapping(DASHBOARD_CACHE_ENABLED=True, DASHBOARD_CACHE_TTL=60)
+    if config:
+        app.config.update(config)
     app.json.ensure_ascii = False
     init_app(app)
+    query_policy = NotionQueryPolicy()
+    cache = DashboardDataCache(lambda key: fetch_saved_rows(key, query_policy),
+                               ttl=app.config["DASHBOARD_CACHE_TTL"])
+    app.extensions["dashboard_cache"] = cache
+    runs = AnalysisRuns(
+        lambda progress: evaluate_impact(None, None, progress=progress, query_policy=query_policy),
+        lambda: cache.invalidate((PACKAGES,)),
+    )
+    app.extensions["analysis_runs"] = runs
+
+    @app.before_request
+    def prepare_saved_data():
+        page = ENDPOINT_PAGES.get(request.endpoint)
+        if not app.config["DASHBOARD_CACHE_ENABLED"] or page is None:
+            return None
+        if page == "advisories":
+            try:
+                validate_advisory_period(started_at=request.args.get("started_at"),
+                                         ended_at=request.args.get("ended_at"))
+            except ValueError:
+                return None  # 기존 400 응답을 사용하고 잘못된 입력으로 조회를 시작하지 않는다.
+        g.cache_page = page
+        g.cache_state = cache.ensure(PAGE_SOURCES[page], force=request.args.get("refresh") == "1")
+        if g.cache_state["loading"]:
+            if request.path.startswith("/api/"):
+                return jsonify(status="loading", source="notion", cache=g.cache_state), 202, {"Retry-After": "2"}
+            return render_template("index.html", active_page=page, page_title=PAGE_TITLES[page],
+                                   page_description="저장된 데이터를 준비하고 있습니다.", cache_loading=True)
+
+    @app.context_processor
+    def saved_data_context():
+        values = {key: request.args[key] for key in ("severity", "page", "started_at", "ended_at")
+                  if key in request.args}
+        values["refresh"] = "1"
+        return {
+            "analysis_state": runs.snapshot(),
+            "cache_state": getattr(g, "cache_state", None),
+            "cache_page": getattr(g, "cache_page", None),
+            "cache_refresh_url": url_for(request.endpoint, **values) if request.endpoint in ENDPOINT_PAGES else None,
+        }
+
+    @app.after_request
+    def saved_data_headers(response):
+        if getattr(g, "cache_page", None) or request.endpoint in ("cache_status", "analysis_run_status", "run_project"):
+            response.headers["Cache-Control"] = "no-store"
+            if response.is_json and getattr(g, "cache_state", None):
+                body = response.get_json()
+                body["cache"] = g.cache_state
+                response.set_data(app.json.dumps(body))
+        return response
+
+    @app.get("/api/cache-status")
+    def cache_status():
+        page = request.args.get("view", "dashboard")
+        if page not in PAGE_SOURCES:
+            return jsonify(status="error", message="알 수 없는 화면입니다."), 400
+        # 상태 확인 자체는 Notion 요청이나 새 작업을 발생시키지 않는다.
+        return jsonify(cache.status(PAGE_SOURCES[page]))
 
     def load_service_results():
         data = {
@@ -89,7 +185,7 @@ def create_app() -> Flask:
             ),
             "run_status": (
                 "실행 상태",
-                "보안 공지 수집부터 분석, 저장까지 실행 상태와 기록을 확인합니다.",
+                "저장된 Notion 공지의 취약도 분석과 결과 저장 상태를 확인합니다.",
             ),
             "results": (
                 "분석 결과",
@@ -240,12 +336,24 @@ def create_app() -> Flask:
 
     @app.post("/api/run")
     def run_project():
-        # TODO: 수집 → 분석 → 저장 작업을 연결한다.
-        # 장시간 작업은 요청 안에서 직접 실행하지 않는다.
-        return jsonify(
-            status="not_implemented",
-            message="프로젝트 실행 기능이 아직 연결되지 않았습니다.",
-        ), 501
+        # JSON과 같은 출처의 요청만 허용하여 외부 페이지의 폼 제출로 실행되지 않게 한다.
+        origin = request.headers.get("Origin")
+        if request.headers.get("Sec-Fetch-Site") == "cross-site" or (origin and origin != request.host_url.rstrip("/")):
+            return jsonify(status="error", message="같은 대시보드에서 분석을 실행해 주세요."), 403
+        if not request.is_json:
+            return jsonify(status="error", message="JSON 형식의 실행 요청이 필요합니다."), 415
+        if request.args or request.get_json(silent=True) != {}:
+            return jsonify(status="error", message="저장된 전체 Notion 공지만 분석할 수 있습니다. 빈 JSON 객체를 보내 주세요."), 400
+        try:
+            started, run = runs.start()
+        except Exception as error:
+            app.logger.warning("분석 작업 시작 실패: %s", type(error).__name__)
+            return jsonify(status="error", message="분석을 시작하지 못했습니다. 잠시 후 다시 실행해 주세요."), 503
+        return jsonify(status="accepted" if started else "busy", run=run), 202 if started else 409
+
+    @app.get("/api/run-status")
+    def analysis_run_status():
+        return jsonify(**runs.snapshot())
 
     return app
 
