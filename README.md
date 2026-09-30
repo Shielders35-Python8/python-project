@@ -42,8 +42,35 @@ python main.py
 
 ```
 
-## 웹 대시보드 실행
+## 슬랙 알림
 
+프로젝트 루트의 `.env`에 [Slack Incoming Webhook](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+URL을 설정합니다. 해당 웹훅에 연결된 채널로 알림이 전송됩니다.
+
+```dotenv
+SLACK_WEBHOOK_URL=https://hooks.slack.com/services/여기에_발급받은_웹훅_경로
+```
+
+```python
+from source.common.slack.slack import send_error_message, send_task_message
+
+send_task_message("취약점 분석을 시작합니다.", task_name="취약점 분석")
+send_task_message("취약점 분석이 완료되었습니다.", task_name="취약점 분석")
+
+# 작업의 except 블록에서 잡은 예외를 error 인자로 전달할 수 있습니다.
+send_error_message(
+    "취약점 분석에 실패했습니다.",
+    error=RuntimeError("분석 데이터 조회 실패"),
+    task_name="취약점 분석",
+)
+```
+
+`task_name`과 `error`는 생략할 수 있습니다. 전송 성공 시 `True`, 설정 누락이나
+전송 실패 시 로그를 남기고 `False`를 반환합니다. 빈 메시지 또는 문자열이 아닌
+메시지는 `ValueError`를 발생시킵니다. 각 요청의 타임아웃은 10초이며 자동 재시도는
+하지 않습니다.
+
+## 웹 대시보드 실행
 
 가상환경을 활성화한 뒤 **프로젝트 루트**에서 실행합니다.
 
