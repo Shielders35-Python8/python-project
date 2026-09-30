@@ -47,6 +47,7 @@ def get_connection(end_point, retry, dates=[]):
 
     # 기본 : Global Advisory 중 최신 게시 순 조회
     params = {
+        "type": "reviewed",
         "sort": "updated",
         "direction": "desc",
         "per_page": 100

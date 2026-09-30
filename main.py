@@ -22,7 +22,7 @@ def main():
     # github advisories 호출 및 parsing
     # 아래 함수의 리턴값의 경우, source/example/advisories_response.json 에 예시 올려두었습니다.
     # get advisories -> filtering -> notion insert
-    #sync_advisories_to_notion()
+    # sync_advisories_to_notion()
     
 if __name__ == "__main__":
     main()
