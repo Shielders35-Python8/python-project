@@ -16,7 +16,9 @@ if __package__ in (None, ""):
 from source.common.notion.notion import NotionClient
 from source.common.slack.notifications import init_app
 from source.config.config import get_env
+from source.services.advisory_analysis import advisory_key, analyze_advisories, validate_advisory_period
 from source.web.dashboard_data import build_saved_package_results
+from source.web.advisory_list import build_saved_advisories
 
 
 def get_saved_rows(env_key: str) -> list[dict]:
@@ -29,13 +31,17 @@ def get_saved_rows(env_key: str) -> list[dict]:
 def get_saved_advisory_count() -> int:
     """Notion의 패키지·버전별 행을 공지 ID 기준으로 중복 집계하지 않는다."""
     advisories = get_saved_rows("NOTION_ADVISORIES_DATA_SOURCE_ID")
-    # ID가 없는 행은 서로 다른 공지로 취급해 누락하지 않는다.
-    return len({
-        ("id", advisory["id"].strip())
-        if (advisory.get("id") or "").strip()
-        else ("page", advisory.get("page_id") or index)
-        for index, advisory in enumerate(advisories)
-    })
+    return len({advisory_key(row, index) for index, row in enumerate(advisories)})
+
+
+def get_saved_advisory_analysis(*, started_at=None, ended_at=None) -> dict:
+    """Notion 공지 전체를 조회해 게시일 범위에 맞는 통계를 반환한다."""
+    # 입력 오류는 Notion 요청을 보내기 전에 확인한다.
+    validate_advisory_period(started_at=started_at, ended_at=ended_at)
+    return analyze_advisories(
+        get_saved_rows("NOTION_ADVISORIES_DATA_SOURCE_ID"),
+        started_at=started_at, ended_at=ended_at,
+    )
 
 
 def create_app() -> Flask:
@@ -127,6 +133,74 @@ def create_app() -> Flask:
     @app.get("/results")
     def analysis_results():
         return render_dashboard_page("results")
+
+    def load_advisory_analysis():
+        filters = {
+            "started_at": request.args.get("started_at", ""),
+            "ended_at": request.args.get("ended_at", ""),
+        }
+        try:
+            validate_advisory_period(**filters)
+        except ValueError as error:
+            return None, str(error), filters, 400
+        try:
+            return get_saved_advisory_analysis(**filters), None, filters, 200
+        except Exception as error:
+            app.logger.warning("Notion 공지 분석 조회 실패: %s", type(error).__name__)
+            return None, "Notion 공지를 불러오지 못했습니다. 잠시 후 다시 조회해 주세요.", filters, 503
+
+    @app.get("/advisories")
+    def advisory_dashboard():
+        analysis, error, filters, status = load_advisory_analysis()
+        return render_template(
+            "index.html", active_page="advisories", page_title="공지 분석",
+            page_description="Notion에 저장된 보안 공지의 심각도, 생태계와 게시 추이를 살펴봅니다.",
+            analysis=analysis, analysis_error=error, filters=filters,
+        ), status
+
+    @app.get("/api/advisories/analysis")
+    def advisory_analysis_api():
+        analysis, error, filters, status = load_advisory_analysis()
+        return jsonify(
+            status="ok" if status == 200 else "error", source="notion",
+            analysis=analysis, message=error, filters=filters,
+        ), status
+
+    def load_advisory_list():
+        try:
+            rows = get_saved_rows("NOTION_ADVISORIES_DATA_SOURCE_ID")
+            advisories = build_saved_advisories(rows)
+            return {
+                "advisories": advisories, "advisory_count": len(advisories),
+                "advisory_row_count": len(rows), "advisory_error": None,
+            }
+        except Exception as error:
+            app.logger.warning("Notion 공지 목록 조회 실패: %s", type(error).__name__)
+            return {
+                "advisories": [], "advisory_count": None, "advisory_row_count": None,
+                "advisory_error": "Notion 공지 조회 실패 · 새로고침해 주세요.",
+            }
+
+    @app.get("/advisories/list")
+    def security_advisories():
+        data = load_advisory_list()
+        page_size = 50
+        page_count = max(1, (len(data["advisories"]) + page_size - 1) // page_size)
+        page = min(max(1, request.args.get("page", 1, type=int)), page_count)
+        start = (page - 1) * page_size
+        return render_template(
+            "index.html", active_page="security_advisories", page_title="보안 공지",
+            page_description="Notion에 저장된 보안 공지와 패키지별 취약 버전 범위를 확인합니다.",
+            **data, visible_advisories=data["advisories"][start:start + page_size],
+            advisory_page=page, advisory_page_count=page_count, advisory_start=start,
+        )
+
+    @app.get("/api/advisories")
+    def advisory_list_api():
+        data = load_advisory_list()
+        return jsonify(
+            status="error" if data["advisory_error"] else "ok", source="notion", **data,
+        ), 503 if data["advisory_error"] else 200
 
     @app.get("/api/health")
     def health():

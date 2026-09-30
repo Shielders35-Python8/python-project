@@ -129,14 +129,45 @@ source/web/
 | 경로 | 메서드 | 용도 |
 | --- | --- | --- |
 | `/` | GET | 실행 상태와 분석 결과를 표시할 기본 화면 |
+| `/advisories` | GET | Notion 공지의 심각도·생태계·게시 추이·패키지별 통계 |
+| `/api/advisories/analysis` | GET | 공지 분석 통계 JSON 및 게시일 기간 필터 |
 | `/api/health` | GET | 웹 서버 응답 확인 |
-| `/api/results` | GET | 결과 조회 연결 지점. 현재 `not_connected`와 빈 목록 반환 |
+| `/api/results` | GET | Notion에 저장된 서비스 패키지 취약도 조회 |
 | `/api/run` | POST | 실행 연결 지점. 현재 HTTP 501과 `not_implemented` 반환 |
 
-현재는 웹 기본 구성만 제공합니다. 실행 버튼은 비활성 상태이며 공지 수집·분석·저장은
-자동 실행되지 않습니다. `app.py`의 TODO 위치에 실행 및 조회 함수를
-연결하고, 화면에 전달할 결과는 `source/processor.py`의 반환 형식을 사용합니다.
-화면의 미집계 값은 `—`로 표시합니다.
+대시보드와 분석 결과는 Notion에 저장된 서비스 패키지 취약도를 조회하며,
+공지 분석 탭은 저장된 공지 데이터를 집계합니다. 실행 버튼은 비활성 상태로,
+GitHub 공지 수집·서비스 영향 평가·DB 저장을 연결하는 작업 실행 기능은 아직 제공하지 않습니다.
+기존 대시보드에서 조회하지 못한 값은 `—`로 표시합니다.
+
+## 공지 분석 대시보드
+
+상단 **공지 분석** 탭(`/advisories`)에서 Notion의 advisories 데이터를 조회하고
+심각도 분포, 생태계별 공지 수, 게시 추이, 공지가 많은 패키지 상위 10개를 표시합니다.
+기존 Notion 인증 설정과 `NOTION_ADVISORIES_DATA_SOURCE_ID`를 사용합니다.
+페이지 조회 및 새로고침마다 현재 저장 데이터를 읽으며, 공지 수집이나 DB 수정은 하지 않습니다.
+
+- 시작일·종료일은 게시일(UTC) 기준이며 양쪽 경계를 포함합니다. 비워두면 전체 기간입니다.
+- 전체 공지·심각도·추이는 GHSA ID별로 중복을 제거합니다. ID가 없으면 Notion 페이지별로 집계합니다.
+- 동일 공지의 심각도가 다르면 가장 높은 알려진 등급, 게시일이 다르면 가장 이른 유효 날짜를 사용합니다.
+- 생태계별·패키지별 수는 해당 항목에 연결된 서로 다른 공지 수입니다. 패키지는 생태계와 이름을 함께 구분합니다.
+- 게시 추이는 62일 이내일 때 일별, 24개월 이내일 때 월별, 그보다 길면 연도별로 표시하며 공지 없는 구간도 0건으로 채웁니다.
+- 심각도 미확인 공지도 포함합니다. 게시일이 없는 공지는 전체 통계에 포함하지만 추이·기간 필터에서는 제외하고 그 수를 안내합니다.
+- 빈 DB·기간 내 결과 없음·조회 실패를 구분해 표시합니다. 조회 실패에 샘플 데이터를 대신 표시하지 않습니다.
+
+`source/services/advisory_analysis.py`의 `analyze_advisories(rows, started_at=None, ended_at=None)`는
+조회된 행 목록을 집계하는 순수 함수입니다. 날짜 인자는 키워드로 전달합니다.
+`source/web/app.py`의 `get_saved_advisory_analysis()`는 Notion 조회와 집계를 연결합니다.
+동일한 결과는 `GET /api/advisories/analysis`로 받을 수 있습니다.
+
+```text
+/advisories?started_at=2026-09-01&ended_at=2026-09-30
+/api/advisories/analysis?started_at=2026-09-01&ended_at=2026-09-30
+```
+
+잘못된 기간 입력은 HTTP 400, Notion 조회 실패는 HTTP 503을 반환합니다.
+차트는 HTML/CSS로 렌더링하여 외부 차트 라이브러리나 CDN 없이 동작하며,
+게시 추이의 수치는 펼쳐지는 표에서도 확인할 수 있습니다.
 
 # 🛡️ **SK Shieldus Rookies Mini Project**
 
