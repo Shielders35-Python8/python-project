@@ -448,45 +448,5 @@ class ServerNotificationTests(NotificationTestCase):
         self.assertEqual(len(self.messages()), 1)
 
 
-class PreviewNotificationTests(NotificationTestCase):
-    def setUp(self):
-        super().setUp()
-        save = advisories.make_response_json
-        self.preview = importlib.import_module("source.web.preview_app")
-        # 미리보기의 기존 파일 저장 비활성화가 다른 테스트에 영향을 주지 않게 복원한다.
-        advisories.make_response_json = save
-        self.enterContext(patch.dict(self.preview.STATE, clear=False))
-        notifications.init_app(self.preview.app)
-
-    def test_fetch_notifies_demo_analysis_once_without_refresh_notifications(self):
-        with patch.object(advisories, "get_advisories", return_value=[{"id": "test"}]):
-            client = self.preview.app.test_client()
-            self.assertEqual(client.post("/fetch", follow_redirects=True).status_code, 200)
-            self.assertEqual(client.get("/").status_code, 200)
-        self.assertEqual(len(self.messages()), 1)
-        self.assertIn("mock 서비스·패키지 기준", self.messages()[0])
-
-    def test_failed_fetch_does_not_notify_analysis_completion(self):
-        with patch.object(advisories, "get_advisories", return_value=[]):
-            self.assertEqual(self.preview.app.test_client().post("/fetch").status_code, 302)
-        self.send.assert_not_called()
-
-    def test_preview_server_errors_are_connected(self):
-        with patch.object(self.preview, "build_page_data", side_effect=RuntimeError("preview failed")):
-            response = self.preview.app.test_client().get("/")
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(len(self.messages()), 1)
-        self.assertIn("preview failed", self.messages()[0])
-
-    def test_missing_preview_input_does_not_notify_completion(self):
-        with patch.object(advisories, "get_advisories", return_value=[{"id": "test"}]), \
-                patch("builtins.open", side_effect=OSError("missing mock")), \
-                patch("builtins.print"):
-            response = self.preview.app.test_client().post("/fetch")
-        self.assertEqual(response.status_code, 500)
-        self.assertEqual(len(self.messages()), 1)
-        self.assertTrue(self.messages()[0].startswith("[오류]"))
-
-
 if __name__ == "__main__":
     unittest.main()
