@@ -116,7 +116,6 @@
         <a href="#screens">③ 대시보드 화면</a>
         <a href="#reliability">④ 안정성 · 알림</a>
         <a href="#data">데이터 구조</a>
-        <a href="#limits">한계 · 개선 방향</a>
         <a href="#appendix">부록</a>
       </nav>
 
@@ -488,34 +487,10 @@
         <p class="muted note">Notion 선정 사유: 비개발자도 결과를 즉시 조회 · 편집할 수 있고, 단기 프로젝트에서 별도 저장소 구축 부담이 없습니다. 고유키 제약이 없는 한계는 코드상의 중복 확인 로직으로 보완했습니다.</p>
       </section>
 
-      <!-- 11. 한계 · 개선 방향 -->
-      <section class="guide-section" aria-labelledby="limits">
-        <div class="section-header">
-          <h2 id="limits"><span class="section-no">11</span>한계 · 개선 방향</h2>
-        </div>
-        <p class="summary-box"><span class="summary-label">요약</span>단기 프로젝트 특성상 남은 한계가 있으며, 우선 개선 대상은 <strong>복수 패키지를 포함한 공지의 전체 분석</strong>입니다.</p>
-        <div class="table-wrapper">
-          <table>
-            <thead>
-              <tr><th scope="col">한계</th><th scope="col">개선 방향</th></tr>
-            </thead>
-            <tbody>
-              <tr><td>공지당 첫 번째 패키지만 저장 · 분석</td><td>패키지별 행으로 분리하여 전체 대조</td></tr>
-              <tr><td>1회 최대 100건 수집</td><td>페이지네이션 적용으로 기간 내 전체 수집</td></tr>
-              <tr><td>Notion 고유키 제약 부재</td><td>RDBMS 전환 후 ID에 UNIQUE 제약 · 인덱스 적용</td></tr>
-              <tr><td>실행 상태 · 이력의 서버 메모리 보관 (단일 프로세스)</td><td>작업 큐 · 저장소 분리로 다중 프로세스 지원</td></tr>
-              <tr><td>일부 버전 표기(<code>^</code>, <code>~</code>, <code>||</code> 등) 판정 불가</td><td>생태계별 범위 문법 지원 확대</td></tr>
-              <tr><td>수동 실행 방식</td><td>스케줄러를 통한 정기 수집 · 분석 자동화</td></tr>
-              <tr><td>"보안 공지" · "보안 권고" 용어 혼용</td><td>용어 통일</td></tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <!-- 12. 부록 -->
+      <!-- 11. 부록 -->
       <section class="guide-section" aria-labelledby="appendix">
         <div class="section-header">
-          <h2 id="appendix"><span class="section-no">12</span>부록</h2>
+          <h2 id="appendix"><span class="section-no">11</span>부록</h2>
         </div>
 
         <details class="guide-details">
