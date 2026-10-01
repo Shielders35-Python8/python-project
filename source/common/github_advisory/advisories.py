@@ -81,11 +81,6 @@ def get_connection(end_point, retry, dates=[]):
         # 예외 상황 log 를 자세히 남겨야 파악 및 조치가 편함
         except Exception as e:
             print("get advisories connection error > get_connection")
-            report_error(
-                f"GitHub 요청에 실패했습니다 (시도 {attempt + 1}/{retry}).",
-                e,
-                task_name="GitHub 수집",
-            )
 
             if isinstance(e, requests.exceptions.HTTPError):
                 status = e.response.status_code
