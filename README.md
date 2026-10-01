@@ -10,18 +10,24 @@
   <img src="https://img.shields.io/badge/Slack-Alerts-4A154B?style=flat-square" alt="Slack Alerts">
 </p>
 
-### 보안 공지 수집 · 서비스 패키지 취약도 분석 대시보드
+### 보안 권고 수집 · 서비스 패키지 취약도 분석 대시보드
 
-GitHub Security Advisories에서 보안 공지를 수집해 Notion에 저장하고, 서비스에 사용 중인 패키지의 버전과 비교해 취약도를 확인하는 프로젝트입니다. Flask 웹 대시보드에서 수집, 분석, 결과 조회와 취약 근거 확인을 진행할 수 있습니다.
+GitHub Security Advisories(보안 권고, 화면에서는 "보안 공지"로 표기)에서 패키지 보안 취약점 공지를 수집해 Notion에 저장하고, 서비스에서 사용 중인 패키지 버전과 비교해 취약도를 판정하는 프로젝트입니다. Flask 웹 대시보드에서 수집, 분석, 결과 조회와 취약 근거 확인을 진행할 수 있습니다.
 
 **Python Team 8** · 김기현 · 노유성 · 엄동규 · 이시원 · 조성현
+
+1. **수집** — GitHub Security Advisories API에서 패키지 보안 취약점 공지를 수집
+2. **저장 · 판정** — Notion 데이터베이스에 저장하고, Python으로 서비스별 패키지 버전과 비교해 취약도를 판정하고 통계를 집계
+3. **시각화** — Flask와 HTML로 웹 대시보드에 표시
+4. **반영 · 알림** — 분석 결과는 Notion에 저장하고, 작업 완료·오류 알림은 Slack으로 전송
 
 | 구성 | 기술 |
 | --- | --- |
 | 서버 | Python · Flask |
-| 화면 | Jinja2 · HTML · CSS · JavaScript |
+| 화면 | Jinja2 · HTML · CSS · JavaScript (외부 차트 라이브러리 없음) |
 | 공지 수집 | GitHub Security Advisories API |
-| 데이터 저장 | Notion API |
+| 데이터 저장 | Notion API (`notion-client`) |
+| 버전 비교 | `packaging` · `semver` · `univers` |
 | 작업·오류 알림 | Slack Incoming Webhook |
 
 ---
@@ -169,17 +175,31 @@ flask run
 대시보드 또는 보안 공지 화면에서 시작일·종료일을 지정하고 **신규 공지 가져오기**를 누릅니다.
 
 - 기간은 GitHub **게시일(UTC)** 기준이며 양 끝 날짜를 포함합니다. 기본값은 오늘을 포함한 최근 7일입니다.
-- 해당 기간의 공지를 갱신일 내림차순으로 **최대 100건** 가져옵니다. 전체 페이지 수집은 지원하지 않습니다.
+- 해당 기간의 **검토 완료(reviewed)** 공지를 갱신일 내림차순으로 **최대 100건** 가져옵니다. 전체 페이지 수집은 지원하지 않습니다.
+- 공지 하나에 패키지가 여러 개면 Notion 구조에 맞춰 **첫 번째 패키지와 첫 번째 CWE**만 저장합니다.
 - 수집 → 중복 확인 → Notion 저장 단계와 수집·제외·저장·실패 건수를 표시합니다.
 - GitHub 요청 실패와 정상 응답 0건을 구분합니다. 일부 저장 실패는 별도로 표시하며 같은 기간으로 재시도할 수 있습니다.
+- GitHub 요청은 서버·네트워크 오류를 최대 3회 재시도하고, 400·401·403·404는 연동 정보 확인이 필요하므로 바로 중단합니다. 재시도 중에는 로그만 남기고 최종 실패만 Slack으로 알립니다.
 - 작업 완료·실패 후 공지 조회 캐시를 갱신합니다. 패키지 취약도 판정은 이어서 **분석 실행**으로 진행합니다.
 
 <details>
 <summary>Notion 중복 확인 및 갱신 기준</summary>
 
-[sync_advisories_to_notion()](source/services/advisory_sync.py)은 게시일 범위로 기존 행을 조회한 뒤 `(id, published_at)`이 같은 공지를 비교합니다. `updated_at`이 같으면 제외하고, 다르면 기존 행을 갱신합니다. 같은 키의 기존 중복 행은 첫 행을 남기고 나머지를 Notion 휴지통으로 이동합니다.
+Notion은 고유키(UNIQUE) 제약이 없어 같은 기간을 다시 수집하면 같은 공지가 중복 저장될 수 있습니다. [sync_advisories_to_notion()](source/services/advisory_sync.py)은 저장 전에 이번에 수집한 공지 **ID로만** Notion을 조회하고(100개씩 묶어 `or` 조건으로 요청), 게시일·갱신일을 비교해 처리를 나눕니다.
 
-ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일이 하나도 없으면 기존 행의 조회 범위를 정할 수 없어 생성 대상으로 처리합니다. Notion 조회가 실패하면 적재를 진행하지 않습니다.
+| Notion 상태 | 처리 |
+| --- | --- |
+| 같은 ID의 행이 없음 | 새 행으로 저장 |
+| 같은 ID, `published_at`·`updated_at`도 같음 | 이미 저장된 공지로 보고 제외 |
+| 같은 ID, `published_at`이나 `updated_at`이 다르거나 비어 있음 | 새로 만들지 않고 기존 행을 GitHub 값으로 수정 |
+| 같은 ID의 행이 여러 개 | 하나만 남기고 나머지는 Notion 휴지통으로 이동 |
+
+같은 ID의 행이 여러 개일 때 남길 행은 ① 두 날짜가 GitHub과 모두 같은 행 ② 두 날짜가 모두 채워진 행 ③ 조회 순서상 첫 행 순으로 고릅니다. 삭제는 날짜가 비어 있거나 다른 행부터 진행하며, 삭제 건수는 서버 로그에만 남깁니다.
+
+- 날짜는 GitHub(`...Z`)과 Notion(`...+00:00`) 형식을 맞춘 뒤 UTC 분 단위로 비교합니다.
+- 수정할 때는 저장하는 11개 컬럼을 모두 GitHub 값으로 덮어씁니다. GitHub의 갱신일은 저장하지 않는 필드(설명, 참고 링크, CVSS 등)가 바뀌어도 갱신되므로, 화면에서는 `updated_at`만 바뀐 것처럼 보일 수 있습니다.
+- ID가 없는 공지는 식별할 수 없어 제외합니다. Notion 조회가 실패하면 중복 적재를 막기 위해 저장을 진행하지 않습니다.
+- Notion은 롤백을 지원하지 않으므로 도중에 실패해도 이미 저장된 행은 유지됩니다. 같은 기간으로 다시 실행하면 저장된 공지는 제외되어 안전하게 재시도할 수 있습니다.
 
 </details>
 
@@ -308,12 +328,12 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/여기에_발급받은_웹훅
 
 | 상황 | 알림 내용 |
 | --- | --- |
-| GitHub 수집 성공 | `[작업] GitHub 수집` — 수집 건수. 정상 응답 0건도 전송 |
-| 취약도 분석·Notion 반영 완료 | 분석 범위, 공지·검사 패키지·취약점 일치·영향 패키지·판정 불가 건수 |
-| 서버·작업 오류 | GitHub 요청 실패, 파싱·파일 저장, Notion 연결·조회·저장, 설정 로딩 오류 |
+| 공지 수집·Notion 적재 완료 | `[작업] 보안 공지 Notion 적재` — 기간, 수집·생성·수정·제외·실패 건수와 실패 사유(최대 5건) |
+| 취약도 분석·Notion 반영 완료 | `[작업] 취약도 분석` — 분석 범위, 공지·검사 패키지·취약점 일치·영향 패키지·알 수 없음·판정 불가 해소 건수 |
+| 서버·작업 오류 | GitHub 최종 수집 실패, 파싱·파일 저장, Notion 연결·조회·저장, 설정 로딩 오류 |
 | 웹·프로세스 오류 | Flask 미처리 예외, HTTP 5xx, ERROR 이상 로그, 메인·백그라운드 스레드 미처리 예외 |
 
-`main.py`와 웹 서버에 오류 알림이 연결되어 있습니다. 알림 기능은 작업을 새로 예약하지 않으며, 실제 분석 완료 알림은 모든 Notion 업데이트가 성공한 뒤 전송합니다.
+`main.py`와 웹 서버에 오류 알림이 연결되어 있습니다. 알림 기능은 작업을 새로 예약하지 않습니다. 적재 완료 알림은 적재가 끝난 뒤 한 번, 분석 완료 알림은 모든 Notion 업데이트가 성공한 뒤 전송합니다. GitHub 요청을 재시도하는 동안에는 알림을 보내지 않습니다.
 
 <details>
 <summary>알림 호출 예시와 전송 정책</summary>
@@ -350,15 +370,16 @@ python-project/
 ├── source/
 │   ├── common/
 │   │   ├── github_advisory/         # GitHub 보안 공지 수집
-│   │   ├── notion/                  # Notion 클라이언트 · 요청 정책
+│   │   ├── notion/                  # Notion 클라이언트(notion.py) · 요청 간격·재시도 정책(query_policy.py)
 │   │   └── slack/                   # 작업·오류 알림
 │   ├── config/                      # 공개 설정 · 환경변수 로딩
 │   ├── databases/schemas/           # Notion 데이터 구조
 │   ├── example/                     # 예시 데이터 · 서비스 패키지 시드 도구
 │   ├── services/
-│   │   ├── advisory_sync.py         # 공지 중복 확인 · Notion 적재
+│   │   ├── advisory_sync.py         # 공지 중복 확인 · Notion 적재 · 적재 결과 알림
 │   │   ├── advisory_analysis.py     # 공지 통계 집계
-│   │   └── processor.py             # 패키지 버전 비교 · 취약도 저장
+│   │   ├── processor.py             # 공지와 패키지 매칭 · 취약도 판정·저장
+│   │   └── version_comparison.py    # 생태계별 버전 비교 규칙
 │   └── web/
 │       ├── app.py                   # Flask 앱 생성 · 화면 및 API 라우트
 │       ├── data_cache.py            # 조회 캐시 · 백그라운드 갱신
@@ -382,6 +403,7 @@ python-project/
 | `templates/advisory_charts.html` | 대시보드·공지 분석이 공유하는 차트 |
 | `templates/advisory_sync.html` | 공지 수집 입력과 진행 상태 |
 | `templates/evidence.html` | 취약 근거 전용 화면 |
+| `templates/guide.html` | 프로젝트 소개·발표용 안내 화면 (`/guide`) |
 | `static/css/style.css` | 대시보드 스타일 |
 | `static/js/dashboard-cache.js` | 갱신 상태 확인·자동 새로고침·시간 표시 |
 | `static/js/advisory-sync.js` | 공지 수집 요청·진행 상태 표시 |
