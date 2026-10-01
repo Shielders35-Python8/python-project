@@ -141,7 +141,7 @@
           <article class="summary-item">
             <p class="step">01 · 수집</p>
             <h2>보안 공지 수집</h2>
-            <p class="muted">GitHub Security Advisories API에서 지정 기간의 패키지 보안 취약점 공지를 최대 100건 수집합니다.</p>
+            <p class="muted">GitHub Security Advisories API에서 지정 기간의 패키지 보안 취약점 공지를 수집합니다.</p>
           </article>
           <article class="summary-item">
             <p class="step">02 · 저장 · 판정</p>
@@ -320,7 +320,7 @@
         </div>
         <p class="summary-box"><span class="summary-label">요약</span>사용자 작업은 <strong>"신규 공지 가져오기"</strong>와 <strong>"분석 실행"</strong> 두 가지입니다. 전자는 수집 · 저장을, 후자는 판정 · 반영을 수행하며, 결과는 대시보드와 Slack에서 확인할 수 있습니다.</p>
         <ol class="flow">
-          <li><strong>공지 수집<span class="owner">이시원</span></strong><span>대시보드에서 기간(게시일 기준)을 지정하고 신규 공지 가져오기를 실행하면, GitHub에서 검토 완료된 공지를 최대 100건 수집합니다.<span class="where">advisories.py · get_advisories()</span></span></li>
+          <li><strong>공지 수집<span class="owner">이시원</span></strong><span>대시보드에서 기간(게시일 기준)을 지정하고 신규 공지 가져오기를 실행하면, GitHub에서 검토 완료된 공지를 수집합니다.<span class="where">advisories.py · get_advisories()</span></span></li>
           <li><strong>중복 확인 · 저장<span class="owner">이시원 · 김기현</span></strong><span>공지 ID로 Notion을 조회하여 신규 공지는 저장하고, 기존 공지는 제외 또는 갱신합니다. 처리 결과는 Slack으로 전송됩니다.<span class="where">advisory_sync.py · sync_advisories_to_notion() / notion.py</span></span></li>
           <li><strong>취약도 분석<span class="owner">노유성</span></strong><span>실행 상태 화면에서 분석을 실행하면, 저장된 전체 공지와 서비스 패키지를 대조하여 패키지별 취약도를 Notion에 반영합니다.<span class="where">processor.py · evaluate_impact() / version_comparison.py</span></span></li>
           <li><strong>시각화<span class="owner">조성현</span></strong><span>대시보드 · 공지 분석 · 분석 결과 · 취약 근거 화면에서 Notion 데이터를 요약, 차트, 표 형태로 확인할 수 있습니다.<span class="where">source/web · advisory_analysis.py</span></span></li>
@@ -342,13 +342,13 @@
         <h3>수집 조건</h3>
         <ul>
           <li>GitHub <strong>게시일(UTC)</strong> 기준 기간(시작일 · 종료일 포함)으로 수집하며, 화면 기본값은 오늘을 포함한 최근 7일입니다.</li>
-          <li><strong>검토 완료(reviewed)</strong> 공지를 갱신일 내림차순으로 <strong>최대 100건</strong> 수집합니다.</li>
+          <li><strong>검토 완료(reviewed)</strong> 공지를 갱신일 내림차순으로 수집합니다.</li>
           <li>저장 항목: ID(GHSA), 제목, 링크, 게시일, 갱신일, 심각도, CVE, 생태계, 패키지명, 취약 버전 범위, 원인(CWE)</li>
         </ul>
 
         <h3>설계 기준</h3>
         <ul>
-          <li><strong>ID 기준 조회</strong> — 수집한 ID 100를 기준으로 Notion data 를 조회 및 일치하는 ID 를 필터링하고, 조건에 따라 업데이트하여 primary key 가 없는 노션 db 를 보완했습니다.</li>
+          <li><strong>ID 기준 조회</strong> — 수집한 ID를 기준으로 Notion data 를 조회 및 일치하는 ID 를 필터링하고, 조건에 따라 업데이트하여 primary key 가 없는 노션 db 를 보완했습니다.</li>
           <li><strong>중복 행 정리</strong> — ID와 저장일, 수정일을 활용한 삭제 기준을 통해 중복 행을 정리하여 데이터 무결성을 유지하고자 했습니다.</li>
           <li><strong>재실행 안전성</strong> — Notion은 롤백을 지원하지 않습니다. 처리 중 실패하더라도 동일 기간으로 재실행하면 저장된 공지는 제외되므로 결과의 일관성이 유지됩니다.</li>
           <li><strong>조회 실패 시 저장 중단</strong> — 중복 확인 없이 저장하면 대량 중복이 발생할 수 있으므로, 조회 실패 시 작업을 중단하고 오류를 전송합니다.</li>
