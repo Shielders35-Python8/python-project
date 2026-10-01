@@ -160,7 +160,7 @@ flask run
 | 보안 공지 | `/advisories/list` | 저장된 공지, 패키지별 취약 버전 범위, 게시일·갱신일 |
 | 공지 분석 | `/advisories` | 심각도·생태계·게시 추이·패키지별 통계와 기간 필터 |
 | 실행 상태 | `/run-status` | 분석 실행, 진행 단계, 최근 실행 기록 |
-| 분석 결과 | `/results` | 저장된 서비스 패키지 취약도와 심각도 필터 |
+| 분석 결과 | `/results` | 서비스명으로 표시한 패키지 취약도와 서비스·심각도 필터 |
 | 취약 근거 | `/evidence` | 일치한 공지, 판정 불가 사유, 현재 비교 결과와 저장값의 차이 |
 | 프로젝트 가이드 | `/guide` | 프로젝트 설명 페이지 |
 
@@ -192,9 +192,14 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 | 취약점이 여러 개 일치 | `critical > high > medium > low` 중 가장 높은 값을 패키지별로 한 번 저장 |
 | 같은 패키지의 버전·범위를 비교할 수 없음 | 확인된 취약점이 없다면 `unknown`으로 저장하고 **알 수 없음** 표시 |
 | 확인된 취약점과 판정 불가 공지가 함께 있음 | 확인된 최고 심각도 유지 |
-| 모든 비교가 불일치 | 기존 값을 자동으로 `safe`로 되돌리는 처리는 수행하지 않음 |
+| 기존 `unknown`의 관련 공지를 전체 분석하여 모두 비교 가능·불일치 | `safe`로 갱신하여 이전 판정 불가를 해소 |
+| 그 외 모든 비교가 불일치·관련 공지 없음·기간을 제한한 분석 | 기존 취약 판정을 자동으로 해제하지 않음 |
 
-분석 결과는 전체 목록에 필터를 적용한 뒤 **50개씩** 표시합니다. 필터는 페이지 이동과 새로고침에도 유지되며 `all`, `critical`, `high`, `medium`, `low`, `safe`, `unknown`을 지원합니다. `unknown`에는 판정 불가, 빈 값과 기타 저장 상태가 포함됩니다. 생략하거나 잘못된 값을 입력하면 전체를 표시합니다.
+분석 결과는 서비스·취약도·검색 기준과 검색어를 고른 뒤 **검색 버튼 또는 Enter**로 조회합니다. 조건을 함께 적용한 결과를 **50개씩** 표시합니다. 서비스 선택 목록과 표에는 서비스명과 비즈니스 도메인을 함께 표시하며, 도메인 값이 없으면 서비스명만 표시합니다. 취약도별 버튼의 건수는 선택한 서비스와 검색 조건 기준입니다. 서비스 미연결 항목도 따로 볼 수 있습니다. 조건을 바꿔 검색하면 첫 페이지로 이동하고, 페이지 이동과 새로고침에는 모든 조건을 유지합니다.
+
+검색어(`q`)는 앞뒤 공백을 제거하고 대소문자 구분 없이 부분 일치로 검색합니다. 검색 기준(`search_field`)은 전체 항목(`all`), 패키지명(`package_name`), 패키지 ID(`package_id`), 서비스명(`service_name`), 비즈니스 도메인(`business_domain`), 생태계(`ecosystem`) 중 선택합니다. 기준을 생략하거나 잘못된 값을 입력하면 전체 항목을 검색하며, 검색어가 비어 있으면 선택한 서비스·취약도 필터만 적용합니다.
+
+취약도(`severity`)는 `all`, `critical`, `high`, `medium`, `low`, `safe`, `unknown`을 지원합니다. `unknown`에는 판정 불가, 빈 값과 기타 저장 상태가 포함됩니다. 취약도를 생략하거나 잘못된 값을 입력하면 전체 취약도를 표시합니다. 서비스(`service`)는 이름 변경·중복에 영향받지 않도록 내부적으로 Notion 서비스 페이지 ID를 사용하며, 생략하면 전체 서비스, `unlinked`는 서비스 미연결 항목입니다. 존재하지 않는 서비스 값은 전체로 바꾸지 않고 결과 0건으로 표시합니다.
 
 **취약 근거** 화면은 저장된 공지와 패키지를 다시 비교해 근거를 보여주는 읽기 전용 화면입니다. 근거 있음·판정 불가·저장값과 다름·전체 필터와 서비스·검색 조건을 제공하며, 이 화면을 조회해도 Notion 데이터는 수정되지 않습니다.
 
@@ -202,7 +207,10 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 <summary>분석 범위와 실행 상태 상세</summary>
 
 - [evaluate_impact(None, None)](source/services/processor.py)는 저장된 전체 공지를 분석합니다. 함수에 날짜를 전달하면 `updated_at` 기간을 적용하지만, 웹 실행 API는 기간·신규 수집 옵션을 받지 않습니다.
-- 버전 비교는 숫자와 점으로 된 버전, 쉼표로 연결한 비교 조건을 지원합니다. 미지원 표기나 빈 값은 판정 불가로 처리하며 별도 `univers` 라이브러리는 사용하지 않습니다.
+- 버전 비교는 [version_comparison.py](source/services/version_comparison.py)에서 쉼표로 연결한 `<`, `<=`, `>`, `>=`, `=`, `==`, `!=` 조건을 모두 만족하는지 확인합니다. `≥`, `≤`, `≠`도 지원합니다. `processor.py`의 분석 저장과 취약 근거 화면은 같은 함수를 사용합니다.
+- 등록된 13개 생태계를 모두 처리합니다. pip/PyPI는 `packaging`의 PEP 440, NuGet·Maven·RubyGems는 [`univers`](https://github.com/aboutcode-org/univers)의 전용 비교기를 사용합니다. NuGet의 네 번째 숫자·대소문자 무시, Maven의 `Final`·`GA`·`RELEASE` 별칭, RubyGems의 점으로 구분한 사전 릴리스도 반영합니다.
+- npm·Go·Rust·Erlang·GitHub Actions·Swift는 `semver`로 비교하며, `v` 접두사와 Go의 pseudo-version을 처리합니다. Composer는 `dev < alpha < beta < RC < stable < patch` 순서를, Pub은 빌드 식별자까지 비교하는 고유 규칙을 적용합니다. 생태계 이름의 대소문자와 PyPI/pip, Cargo/rust, Hex/erlang 등의 별칭도 정규화합니다.
+- `other`와 미등록 생태계도 숫자·점 또는 SemVer 표기라면 비교합니다. 순서를 정의할 수 없는 임의 태그·브랜치·커밋 해시, 빈 값, 미지원 범위 문법(`||`, 와일드카드, `^`, `~`, 네이티브 구간 표기)은 판정 불가로 남깁니다. 취약 범위는 사전 릴리스도 명시된 조건으로 판정하며, 패키지 설치 도구의 사전 릴리스 자동 제외 규칙은 적용하지 않습니다.
 - 실행 중에는 분석 버튼을 비활성화하고, 중복 실행 요청에 HTTP `409`와 기존 작업을 반환합니다.
 - 저장 도중 실패하면 성공으로 표시하지 않습니다. 이미 저장된 건수와 실패 안내를 남기고 조회 캐시를 갱신합니다.
 - 분석 상태와 최근 **20건**의 기록은 서버 메모리에 보관합니다. 수집 상태도 메모리에 보관하므로 현재 구조는 **단일 서버 프로세스**용입니다.
@@ -259,7 +267,7 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 | GET | `/api/health` | 웹 서버 응답 확인. 외부 서비스 상태는 포함하지 않음 |
 | GET | `/api/advisories` | Notion에 저장된 보안 공지 목록 |
 | GET | `/api/advisories/analysis` | 공지 통계와 게시일 기간 필터 |
-| GET | `/api/results` | 저장된 패키지 취약도와 심각도 필터 |
+| GET | `/api/results` | 저장된 패키지 취약도와 서비스·심각도 필터 |
 | GET | `/api/cache-status?view=dashboard` | 데이터 준비·갱신 상태. Notion 요청 없음 |
 | GET | `/api/run-status` | 현재 분석 단계·건수·최근 실행 기록 |
 | GET | `/api/advisories/sync-status` | 최근 수집의 기간·진행 상태·수집·제외·저장·실패 건수 |
@@ -269,13 +277,15 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 ```text
 /results?severity=high
 /api/results?severity=high
+/results?severity=high&search_field=package_name&q=django
+/api/results?severity=high&search_field=package_name&q=django
 /advisories?started_at=2026-09-01&ended_at=2026-09-30
 /api/advisories/analysis?started_at=2026-09-01&ended_at=2026-09-30
 ```
 
 캐시를 사용하는 JSON API는 최초 데이터 준비 중 HTTP `202`, `status: loading`, `Retry-After: 2`를 반환합니다. 정상·오류 응답에는 `cache` 상태가 포함됩니다. 잘못된 기간은 `400`, Notion 조회 실패는 `503`으로 구분합니다.
 
-분석 결과 API의 `results`와 `filtered_count`는 선택한 필터 기준이며, `package_count`와 `severity_counts`는 전체 저장 데이터 기준입니다. 조회 실패 시 건수는 `null`로 반환합니다.
+분석 결과 API의 `results`와 `filtered_count`는 서비스·취약도·검색 조건을 함께 적용한 기준이며, `package_count`와 `severity_counts`는 전체 저장 데이터 기준입니다. `service_severity_counts`는 선택한 서비스의 취약도별 건수이고, `search_severity_counts`는 여기에 검색 조건도 적용한 취약도별 건수입니다. `service_options`는 서비스 선택 값과 표시 이름 목록입니다. 패키지 조회 실패 시 건수는 `null`로 반환합니다.
 
 ### 실행 API
 

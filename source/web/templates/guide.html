@@ -165,7 +165,7 @@
               <tr><td>보안 공지</td><td><a class="mono" href="http://127.0.0.1:5000/advisories/list" target="_blank" rel="noopener noreferrer">/advisories/list</a></td><td>저장된 공지, 패키지별 취약 버전 범위, 게시일 · 갱신일, 신규 공지 가져오기</td></tr>
               <tr><td>공지 분석</td><td><a class="mono" href="http://127.0.0.1:5000/advisories" target="_blank" rel="noopener noreferrer">/advisories</a></td><td>심각도 · 생태계 · 게시 추이 · 패키지별 통계와 기간 필터</td></tr>
               <tr><td>실행 상태</td><td><a class="mono" href="http://127.0.0.1:5000/run-status" target="_blank" rel="noopener noreferrer">/run-status</a></td><td>분석 실행, 진행 단계, 최근 실행 기록</td></tr>
-              <tr><td>분석 결과</td><td><a class="mono" href="http://127.0.0.1:5000/results" target="_blank" rel="noopener noreferrer">/results</a></td><td>서비스 패키지별 저장된 취약도와 심각도 필터</td></tr>
+              <tr><td>분석 결과</td><td><a class="mono" href="http://127.0.0.1:5000/results" target="_blank" rel="noopener noreferrer">/results</a></td><td>서비스명으로 표시한 패키지 취약도와 서비스·심각도 필터</td></tr>
               <tr><td>취약 근거</td><td><a class="mono" href="http://127.0.0.1:5000/evidence" target="_blank" rel="noopener noreferrer">/evidence</a></td><td>일치한 공지, 판정 불가 사유, 현재 비교 결과와 저장값의 차이 (읽기 전용)</td></tr>
             </tbody>
           </table>
@@ -231,7 +231,8 @@
 
         <h3>결과 조회</h3>
         <ul>
-          <li><a href="http://127.0.0.1:5000/results" target="_blank" rel="noopener noreferrer">분석 결과</a>는 전체 목록에 필터를 적용한 뒤 <strong>50개씩</strong> 표시합니다. 필터는 페이지 이동과 새로고침에도 유지됩니다.</li>
+          <li><a href="http://127.0.0.1:5000/results" target="_blank" rel="noopener noreferrer">분석 결과</a>는 서비스·취약도·검색 기준과 검색어를 고른 뒤 <strong>검색 버튼 또는 Enter</strong>로 조회하고 결과를 <strong>50개씩</strong> 표시합니다. 서비스명 옆에 비즈니스 도메인도 표시하며, 도메인이 없으면 서비스명만 표시합니다. 취약도별 건수는 선택한 서비스와 검색 조건 기준이며, 서비스 미연결 항목도 따로 볼 수 있습니다. 조건을 바꿔 검색하면 첫 페이지로 이동하고, 페이지 이동과 새로고침에는 모든 조건을 유지합니다.</li>
+          <li>검색 기준은 전체 항목·패키지명·패키지 ID·서비스명·비즈니스 도메인·생태계 중 선택할 수 있습니다. 대소문자를 구분하지 않는 부분 검색이며, 검색어가 비어 있으면 서비스·취약도 필터만 적용합니다.</li>
           <li>필터 값: <code>all</code>, <code>critical</code>, <code>high</code>, <code>medium</code>, <code>low</code>, <code>safe</code>, <code>unknown</code>. <code>unknown</code>에는 판정 불가, 빈 값과 기타 저장 상태가 포함되며, 생략하거나 잘못된 값이면 전체를 표시합니다.</li>
           <li><a href="http://127.0.0.1:5000/evidence" target="_blank" rel="noopener noreferrer">취약 근거</a>는 저장된 공지와 패키지를 다시 비교해 근거를 보여주는 읽기 전용 화면입니다. 근거 있음 · 판정 불가 · 저장값과 다름 · 전체 필터와 서비스 · 검색 조건을 제공하며, Notion 데이터를 수정하지 않습니다.</li>
         </ul>
@@ -338,7 +339,7 @@
         <ul>
           <li>캐시를 사용하는 JSON API는 최초 데이터 준비 중 HTTP <code>202</code>, <code>status: loading</code>, <code>Retry-After: 2</code>를 반환합니다. 정상 · 오류 응답에는 <code>cache</code> 상태가 포함됩니다.</li>
           <li>잘못된 기간은 <code>400</code>, Notion 조회 실패는 <code>503</code>으로 구분합니다.</li>
-          <li>분석 결과 API의 <code>results</code>와 <code>filtered_count</code>는 선택한 필터 기준이며, <code>package_count</code>와 <code>severity_counts</code>는 전체 저장 데이터 기준입니다. 조회 실패 시 건수는 <code>null</code>로 반환합니다.</li>
+          <li>분석 결과 API의 <code>results</code>와 <code>filtered_count</code>는 서비스·취약도·검색 조건을 함께 적용한 기준이며, <code>package_count</code>와 <code>severity_counts</code>는 전체 저장 데이터 기준입니다. <code>service_severity_counts</code>는 선택한 서비스의 취약도별 건수이고, <code>search_severity_counts</code>는 검색 조건도 적용한 취약도별 건수입니다. <code>service_options</code>는 서비스 선택 값과 표시 이름 목록입니다. <code>service</code>에는 Notion 서비스 페이지 ID를 사용하며, 생략하면 전체 서비스, <code>unlinked</code>는 서비스 미연결 항목입니다. 검색은 <code>q</code>와 <code>search_field</code>를 사용합니다. 패키지 조회 실패 시 건수는 <code>null</code>로 반환합니다.</li>
         </ul>
 
         <h3>실행 API</h3>

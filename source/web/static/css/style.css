@@ -92,6 +92,16 @@ h1 { font-size: clamp(28px, 3.7vw, 52px); font-weight: 800; letter-spacing: -0.0
 .section-header h2 { font-size: 24px; letter-spacing: -0.045em; }
 .results-actions { display: flex; align-items: center; gap: 22px; }
 .results-actions .muted { font-size: 11px; }
+.service-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; margin: 20px 0 8px; }
+.service-filter label { display: block; margin-bottom: 5px; font-size: 12px; font-weight: 600; }
+.result-filter-field { flex: 1 1 130px; min-width: 0; }
+.result-service-field { flex: 1.5 1 200px; }
+.result-query-field { flex: 2 1 230px; }
+.result-filter-actions { display: flex; align-items: center; gap: 12px; }
+.service-filter select, .service-filter input[type="search"] { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 0; background: var(--paper); color: var(--ink); font: inherit; font-size: 13px; }
+.service-filter button { min-height: 40px; padding: 8px 18px; border: 1px solid var(--ink); background: var(--ink); color: var(--paper); font: inherit; font-size: 12px; cursor: pointer; }
+.service-filter button:hover { background: var(--accent); border-color: var(--accent); }
+.result-search-hint { font-size: 11px; }
 .severity-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 12px; }
 .severity-filter { display: inline-flex; align-items: center; gap: 9px; min-height: 38px; padding: 7px 14px; border: 1px solid var(--line); text-decoration: none; font-size: 12px; }
 .severity-filter span { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -113,7 +123,9 @@ tbody tr:not(:has(.empty-state)):hover { background: #f0eee8; }
 .mono { font-family: "Cascadia Code", Consolas, "Liberation Mono", monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
 .package-name { font-weight: 600; min-width: 155px; }
 .service-cell { min-width: 165px; }
-.service-name { display: block; font-size: 11px; }
+.service-name { display: block; font-size: 13px; font-weight: 600; }
+.linked-service { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.service-domain { padding: 2px 7px; border: 1px solid var(--line); border-radius: 4px; color: var(--muted); font-size: 11px; }
 .linked-service + .linked-service { margin-top: 8px; }
 .data-notice { margin-bottom: 16px; color: var(--accent); font-size: 12px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 0; }

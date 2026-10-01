@@ -1,47 +1,11 @@
-import re
-
 from source.common.notion.notion import NotionClient
 from source.config.config import get_env
 from source.common.slack.notifications import notify_errors
 from source.common.slack.slack import send_task_message
+from source.services.version_comparison import normalize_ecosystem, version_matches_range
 
 
 SEVERITY_RANK = {"low": 1, "medium": 2, "high": 3, "critical": 4}
-
-
-def version_matches_range(version, version_range) -> bool | None:
-    """숫자 버전의 범위 포함 여부. 지원하지 않는 표기는 None(알 수 없음)이다."""
-    if not isinstance(version, str) or not isinstance(version_range, str):
-        return None
-    if re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", version.strip()) is None:
-        return None
-
-    # 모든 조건을 먼저 읽어, 조건 순서에 따라 판정 불가가 False로 바뀌지 않게 한다.
-    conditions = []
-    for condition in version_range.split(","):
-        match = re.fullmatch(
-            r"\s*(<=|>=|==|!=|<|>|=)?\s*([0-9]+(?:\.[0-9]+)*)\s*",
-            condition,
-        )
-        if match is None:
-            return None
-        operator, boundary = match.groups()
-        conditions.append((operator or "==", tuple(map(int, boundary.split(".")))))
-
-    installed = tuple(map(int, version.strip().split(".")))
-    for operator, limit in conditions:
-        length = max(len(installed), len(limit))
-        # 1.2와 1.2.0을 같은 버전으로 비교한다.
-        current = installed + (0,) * (length - len(installed))
-        limit += (0,) * (length - len(limit))
-        comparisons = {
-            "<": current < limit, "<=": current <= limit,
-            ">": current > limit, ">=": current >= limit,
-            "=": current == limit, "==": current == limit, "!=": current != limit,
-        }
-        if not comparisons[operator]:
-            return False
-    return True
 
 
 @notify_errors("취약도 분석")
@@ -50,6 +14,7 @@ def evaluate_impact(started_at, ended_at, *, progress=None, query_policy=None):
     각 advisories 마다 "package_name", "package_version_range", "ecosystem" 과 service_package의 "package_name", "package_version", "ecosystem"을 비교하고
     분석 대상 공지 중 일치한 가장 높은 severity로 패키지별 vulnerability를 한 번만 업데이트한다.
     취약점 일치는 없지만 같은 패키지의 버전 비교에 실패하면 unknown으로 저장한다.
+    전체 분석에서 기존 unknown의 모든 관련 공지가 비교 가능하고 불일치하면 safe로 갱신한다.
     """
     notion = NotionClient(query_policy=query_policy) if query_policy else NotionClient()
     try:
@@ -82,17 +47,20 @@ def _evaluate_impact(notion, started_at, ended_at, progress):
     # package_version_range는 범위 비교 필요.
     matches = []
     unknown_packages = set()
+    compared_packages = set()
     for advisory in advisories:
         if not advisory.get("package_name") or not advisory.get("ecosystem"):
             continue
         for service_package in service_packages:
             if advisory["package_name"] != service_package.get(
                 "package_name"
-            ) or advisory["ecosystem"] != service_package.get("ecosystem"):
+            ) or normalize_ecosystem(advisory["ecosystem"]) != normalize_ecosystem(service_package.get("ecosystem")):
                 continue
+            compared_packages.add(service_package["page_id"])
             is_match = version_matches_range(
                 service_package.get("package_version"),
                 advisory.get("package_version_range"),
+                ecosystem=service_package.get("ecosystem"),
             )
             if is_match is None:
                 unknown_packages.add(service_package["page_id"])
@@ -115,7 +83,19 @@ def _evaluate_impact(notion, started_at, ended_at, progress):
 
     # 확인된 취약점은 숨기지 않는다. 판정 불가만 있는 패키지를 unknown으로 저장한다.
     unknown_only = unknown_packages - highest_severity_by_page.keys()
-    updates = {**dict.fromkeys(sorted(unknown_only), "unknown"), **highest_severity_by_page}
+    # 지원 확대로 판정이 가능해진 기존 unknown만 전체 공지 분석에서 해소한다.
+    # 관련 공지 없음/부분 기간 조회/판정 불가가 남은 경우와 기존 취약 판정은 유지한다.
+    resolved_unknown = {
+        package["page_id"] for package in service_packages
+        if started_at is None and ended_at is None
+        and package.get("page_id") in compared_packages
+        and package["page_id"] not in unknown_packages
+        and package["page_id"] not in highest_severity_by_page
+        and isinstance(package.get("vulnerability"), str)
+        and package["vulnerability"].strip().lower() == "unknown"
+    }
+    updates = {**dict.fromkeys(sorted(resolved_unknown), "safe"),
+               **dict.fromkeys(sorted(unknown_only), "unknown"), **highest_severity_by_page}
     summary.update(matched_count=len(matches), affected_count=len(highest_severity_by_page),
                    unknown_count=len(unknown_only), total_updates=len(updates))
     progress(stage="saving", message="분석 결과를 Notion에 저장하고 있습니다.", **summary)
@@ -135,7 +115,7 @@ def _evaluate_impact(notion, started_at, ended_at, progress):
         f"분석 범위: {'저장된 전체 공지' if started_at is None and ended_at is None else f'{started_at} ~ {ended_at}'}\n"
         f"공지 {len(advisories)}건 / 검사 패키지 {len(service_packages)}개 / "
         f"취약점 일치 {len(matches)}건 / 영향 패키지 {len(affected_packages)}개 / "
-        f"알 수 없음 {len(unknown_only)}개\n"
+        f"알 수 없음 {len(unknown_only)}개 / 판정 불가 해소 {len(resolved_unknown)}개\n"
         "Notion 결과 반영을 완료했습니다.",
         task_name="취약도 분석",
     )

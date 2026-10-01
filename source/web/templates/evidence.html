@@ -200,7 +200,7 @@
               <p class="data-notice">
                 Notion 저장값({{ row.stored }})과 현재 근거 판정({{ row.computed if row.computed != 'unknown' else '판정 불가' }})이 다릅니다.
                 {% if row.mismatch_fixable %}분석을 다시 실행하면 근거 판정으로 저장됩니다.
-                {% else %}분석은 일치·판정 불가만 저장하고 safe로 되돌리지 않으므로, 재분석으로는 바뀌지 않습니다.{% endif %}
+                {% else %}기존 취약 판정이나 관련 공지가 없는 저장값은 재분석으로 자동 해제하지 않습니다.{% endif %}
               </p>
               {% endif %}
 

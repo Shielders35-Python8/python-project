@@ -196,20 +196,55 @@
           <h2 id="results-heading">분석 결과</h2>
           <div class="results-actions">
             <p class="muted">Notion에 저장된 패키지 취약도{% if package_count is not none %} · {{ package_count }}개{% endif %}</p>
-            <a class="refresh-link" href="{{ url_for('analysis_results' if active_page == 'results' else 'dashboard', refresh=1, severity=result_severity if result_severity != 'all' else none, page=result_page if active_page == 'results' and result_page > 1 else none) }}">
+            <a class="refresh-link" href="{{ url_for('analysis_results', refresh=1, severity=result_severity if result_severity != 'all' else none, service=result_service or none, page=result_page if result_page > 1 else none, q=result_query or none, search_field=result_search_field if result_search_field != 'all' else none) }}">
               <svg viewBox="0 0 20 20" width="15" height="15" aria-hidden="true"><path d="M16.5 7A7 7 0 1 0 17 11M16.5 3v4h-4"/></svg>
               새로고침
             </a>
           </div>
         </div>
         {% if active_page == 'results' %}
+        <form class="service-filter" method="get" action="{{ url_for('analysis_results') }}" role="search" aria-label="분석 결과 검색">
+          <div class="result-filter-field result-service-field">
+            <label for="result-service">서비스</label>
+            <select id="result-service" name="service">
+              {% for option in service_options %}
+              <option value="{{ option.value }}"{% if result_service == option.value %} selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="result-filter-field">
+            <label for="result-severity">취약도</label>
+            <select id="result-severity" name="severity">
+              {% for option in result_filter_options %}
+              <option value="{{ option.value }}"{% if result_severity == option.value %} selected{% endif %}>{{ option.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="result-filter-field">
+            <label for="result-search-field">검색 기준</label>
+            <select id="result-search-field" name="search_field">
+              {% for value, label in result_search_options.items() %}
+              <option value="{{ value }}"{% if result_search_field == value %} selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="result-filter-field result-query-field">
+            <label for="result-query">검색어</label>
+            <input id="result-query" type="search" name="q" value="{{ result_query }}" placeholder="검색어를 입력하세요" aria-describedby="result-search-hint">
+          </div>
+          <div class="result-filter-actions">
+            <button type="submit">검색</button>
+            {% if result_service or result_severity != 'all' or result_query or result_search_field != 'all' %}<a class="refresh-link" href="{{ url_for('analysis_results') }}">필터 초기화</a>{% endif %}
+          </div>
+        </form>
+        <p class="muted result-search-hint" id="result-search-hint">필터와 검색 기준을 고른 뒤 검색하세요. 검색어의 일부만 입력해도 찾을 수 있으며 대소문자는 구분하지 않습니다.</p>
         <nav class="severity-filters" aria-label="취약도 필터">
           {% for option in result_filter_options %}
-          <a class="severity-filter{% if result_severity == option.value %} is-selected{% endif %}" href="{{ url_for('analysis_results', severity=option.value if option.value != 'all' else none) }}"{% if result_severity == option.value %} aria-current="true"{% endif %}>{{ option.label }} <span>{{ option.count if option.count is not none else '—' }}</span></a>
+          <a class="severity-filter{% if result_severity == option.value %} is-selected{% endif %}" href="{{ url_for('analysis_results', severity=option.value if option.value != 'all' else none, service=result_service or none, q=result_query or none, search_field=result_search_field if result_search_field != 'all' else none) }}"{% if result_severity == option.value %} aria-current="true"{% endif %}>{{ option.label }} <span>{{ option.count if option.count is not none else '—' }}</span></a>
           {% endfor %}
         </nav>
         {% if filtered_result_count is not none %}
-        <p class="filter-result-count muted" role="status">{{ result_severity_label }} · {{ filtered_result_count }}개 표시 / 저장된 패키지 {{ package_count }}개</p>
+        <p class="filter-result-count muted" role="status">{{ result_service_label }} · {{ result_severity_label }}{% if result_query %} · {{ result_search_label }} “{{ result_query }}”{% endif %} · {{ filtered_result_count }}개 표시 / 저장된 패키지 {{ package_count }}개</p>
         {% endif %}
         {% endif %}
         {% if service_error and not results_error %}
@@ -222,7 +257,7 @@
             <thead>
               <tr>
                 <th scope="col" class="row-number"><span aria-hidden="true">#</span><span class="sr-only">번호</span></th>
-                <th scope="col">서비스</th>
+                <th scope="col">서비스명</th>
                 <th scope="col">패키지 ID</th>
                 <th scope="col">패키지</th>
                 <th scope="col">생태계</th>
@@ -236,7 +271,10 @@
                 <td class="row-number">{{ result_start + loop.index }}</td>
                 <td class="service-cell">
                   {% for service in result.services %}
-                  <div class="linked-service"><span class="mono">{{ service.id or '—' }}</span><span class="muted service-name">{{ service.name }}</span></div>
+                  <div class="linked-service">
+                    <span class="service-name">{{ service.name }}</span>
+                    {% if service.business_domain %}<span class="service-domain"><span class="sr-only">비즈니스 도메인: </span>{{ service.business_domain }}</span>{% endif %}
+                  </div>
                   {% else %}
                   <span class="muted">서비스 미연결</span>
                   {% endfor %}
@@ -262,6 +300,15 @@
                   {% if results_error %}
                   <strong>패키지 취약도를 불러오지 못했습니다.</strong>
                   <span role="status">{{ results_error }}</span>
+                  {% elif package_count and result_query %}
+                  <strong>선택한 필터와 검색어에 해당하는 패키지가 없습니다.</strong>
+                  <span>{{ result_search_label }} “{{ result_query }}” · 검색어 또는 필터를 변경해 주세요.</span>
+                  <a class="refresh-link" href="{{ url_for('analysis_results', service=result_service or none, severity=result_severity if result_severity != 'all' else none, search_field=result_search_field if result_search_field != 'all' else none) }}">검색어 지우기</a>
+                  <a class="refresh-link" href="{{ url_for('analysis_results') }}">전체 목록 보기</a>
+                  {% elif package_count and result_service %}
+                  <strong>선택한 서비스·취약도에 해당하는 패키지가 없습니다.</strong>
+                  <span>{{ result_service_label }} · {{ result_severity_label }} 조건을 변경해 주세요.</span>
+                  <a class="refresh-link" href="{{ url_for('analysis_results') }}">전체 목록 보기</a>
                   {% elif package_count and result_severity != 'all' %}
                   <strong>선택한 취약도에 해당하는 패키지가 없습니다.</strong>
                   <span>{{ result_severity_label }}로 저장된 항목이 없습니다. 다른 취약도를 선택해 주세요.</span>
@@ -278,13 +325,13 @@
         </div>
         {% if result_page_count > 1 %}
         <nav class="pagination" aria-label="패키지 목록 페이지">
-          <p class="muted">{{ '필터 결과' if result_severity != 'all' else '전체' }} {{ filtered_result_count }}개 중 {{ result_start + 1 }}–{{ result_start + visible_results|length }}개 · {{ result_page }} / {{ result_page_count }}페이지</p>
+          <p class="muted">{{ '필터 결과' if result_service or result_severity != 'all' or result_query else '전체' }} {{ filtered_result_count }}개 중 {{ result_start + 1 }}–{{ result_start + visible_results|length }}개 · {{ result_page }} / {{ result_page_count }}페이지</p>
           <div>
             {% if result_page > 1 %}
-            <a class="refresh-link" href="{{ url_for('analysis_results' if active_page == 'results' else 'dashboard', page=result_page - 1, severity=result_severity if result_severity != 'all' else none) }}#results">이전</a>
+            <a class="refresh-link" href="{{ url_for('analysis_results', page=result_page - 1, severity=result_severity if result_severity != 'all' else none, service=result_service or none, q=result_query or none, search_field=result_search_field if result_search_field != 'all' else none) }}#results">이전</a>
             {% endif %}
             {% if result_page < result_page_count %}
-            <a class="refresh-link" href="{{ url_for('analysis_results' if active_page == 'results' else 'dashboard', page=result_page + 1, severity=result_severity if result_severity != 'all' else none) }}#results">다음</a>
+            <a class="refresh-link" href="{{ url_for('analysis_results', page=result_page + 1, severity=result_severity if result_severity != 'all' else none, service=result_service or none, q=result_query or none, search_field=result_search_field if result_search_field != 'all' else none) }}#results">다음</a>
             {% endif %}
           </div>
         </nav>

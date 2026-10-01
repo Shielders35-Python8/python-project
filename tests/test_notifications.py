@@ -168,7 +168,7 @@ class AnalysisNotificationTests(NotificationTestCase):
                     self.assertIn(f"취약점 일치 {size}건 / 영향 패키지 1개", self.messages()[0])
 
     def test_uncomparable_version_or_range_is_saved_as_unknown(self):
-        for version, expression in (("1.0", "< 2.0-rc.1"), ("1.0-beta.1", "< 2.0"),
+        for version, expression in (("1.0", "< 2.0-rc..1"), ("1.0-beta..1", "< 2.0"),
                                     (None, "< 2.0"), ("1.0", None)):
             with self.subTest(version=version, expression=expression):
                 self.notion.update_database_rows.reset_mock()
@@ -184,7 +184,7 @@ class AnalysisNotificationTests(NotificationTestCase):
                 self.assertIn("영향 패키지 0개 / 알 수 없음 1개", self.messages()[0])
 
     def test_unknown_does_not_hide_confirmed_highest_severity(self):
-        advisories = [dict(self.advisory, package_version_range="< 2.0-rc.1"),
+        advisories = [dict(self.advisory, package_version_range="< 2.0-rc..1"),
                       dict(self.advisory, severity="critical"), self.advisory]
         for order in permutations(advisories):
             self.notion.update_database_rows.reset_mock()
@@ -199,7 +199,7 @@ class AnalysisNotificationTests(NotificationTestCase):
     def test_multiple_unknown_ranges_save_once_even_with_a_numeric_nonmatch(self):
         self.notion.get_database_rows.side_effect = [
             [dict(self.advisory, package_version_range=value)
-             for value in ("< 2.0-rc.1", ">= 4.0-beta.1", "< 2.0")],
+             for value in ("< 2.0-rc..1", ">= 4.0-beta..1", "< 2.0")],
             [dict(self.package, package_version="3.0")],
         ]
         processor.evaluate_impact(None, None)
@@ -209,12 +209,27 @@ class AnalysisNotificationTests(NotificationTestCase):
 
     def test_unrelated_unsupported_ranges_do_not_mark_package_unknown(self):
         self.notion.get_database_rows.side_effect = [
-            [dict(self.advisory, package_name="other", package_version_range="< 2.0-rc.1"),
-             dict(self.advisory, ecosystem="npm", package_version_range="< 2.0-rc.1")],
+            [dict(self.advisory, package_name="other", package_version_range="< 2.0-rc..1"),
+             dict(self.advisory, ecosystem="npm", package_version_range="< 2.0-rc..1")],
             [self.package],
         ]
         processor.evaluate_impact(None, None)
         self.notion.update_database_rows.assert_not_called()
+
+    def test_resolved_unknown_is_not_cleared_by_a_partial_period_analysis(self):
+        self.package.update(package_version="3.0", vulnerability="unknown")
+        processor.evaluate_impact("2026-09-01", "2026-09-30")
+        self.notion.update_database_rows.assert_not_called()
+
+    def test_unknown_is_retained_when_any_related_range_is_still_unsupported(self):
+        self.notion.get_database_rows.side_effect = [
+            [self.advisory, dict(self.advisory, package_version_range="< latest")],
+            [dict(self.package, package_version="3.0", vulnerability="unknown")],
+        ]
+        processor.evaluate_impact(None, None)
+        self.notion.update_database_rows.assert_called_once_with(
+            page_id="page-1", properties={"vulnerability": {"select": {"name": "unknown"}}},
+        )
 
     def test_each_package_gets_its_own_highest_matching_severity(self):
         self.notion.get_database_rows.side_effect = [

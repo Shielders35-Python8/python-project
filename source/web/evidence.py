@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, current_app, render_template, request
 
 from source.services.processor import SEVERITY_RANK, version_matches_range
+from source.services.version_comparison import normalize_ecosystem
 
 ADVISORIES = "NOTION_ADVISORIES_DATA_SOURCE_ID"
 SERVICES = "NOTION_SERVICE_DATA_SOURCE_ID"
@@ -15,7 +16,6 @@ SOURCES = (SERVICES, PACKAGES, ADVISORIES)
 LEVELS = ("critical", "high", "medium", "low")
 VIEWS = {"affected": "근거 있음", "unknown": "판정 불가", "mismatch": "저장값과 다름", "all": "전체"}
 PAGE_SIZE = 30
-NUMERIC = re.compile(r"[0-9]+(?:\.[0-9]+)*")
 KST = timezone(timedelta(hours=9))
 
 evidence_bp = Blueprint("evidence", __name__)
@@ -51,9 +51,9 @@ def exit_hint(version_range) -> str | None:
     return {"<": f"{boundary} 이상", "<=": f"{boundary} 초과"}.get(operator, f"{boundary} 외 버전")
 
 
-def _unknown_reason(installed, version_range) -> str:
+def _unknown_reason(installed, version_range, ecosystem=None) -> str:
     """판정 불가 원인 구분"""
-    if not isinstance(installed, str) or not NUMERIC.fullmatch(installed.strip()):
+    if version_matches_range(installed, installed, ecosystem=ecosystem) is None:
         return "설치 버전 표기"
     if not isinstance(version_range, str) or not version_range.strip():
         return "공지 범위 없음"
@@ -71,7 +71,8 @@ def _advisory_view(advisory: dict, installed=None, unknown=False) -> dict:
         "range": advisory.get("package_version_range"),
         "published": (advisory.get("published_at") or "")[:10] or None,
         "hint": None if unknown else exit_hint(advisory.get("package_version_range")),
-        "reason": _unknown_reason(installed, advisory.get("package_version_range")) if unknown else None,
+        "reason": _unknown_reason(installed, advisory.get("package_version_range"),
+                                  advisory.get("ecosystem")) if unknown else None,
     }
 
 
@@ -93,17 +94,18 @@ def build_evidence(services: list[dict], packages: list[dict], advisories: list[
     for advisory in advisories:
         name, ecosystem = advisory.get("package_name"), advisory.get("ecosystem")
         if name and ecosystem:
-            by_key.setdefault((ecosystem, name), []).append(advisory)
+            by_key.setdefault((normalize_ecosystem(ecosystem), name), []).append(advisory)
 
     service_by_page = {service.get("page_id"): service for service in services}
 
     rows = []
     for package in packages:
         installed = package.get("package_version")
-        candidates = by_key.get((package.get("ecosystem"), package.get("package_name")), [])
+        candidates = by_key.get((normalize_ecosystem(package.get("ecosystem")), package.get("package_name")), [])
         matched, unknown = [], []
         for advisory in candidates:
-            result = version_matches_range(installed, advisory.get("package_version_range"))
+            result = version_matches_range(installed, advisory.get("package_version_range"),
+                                           ecosystem=package.get("ecosystem"))
             if result is None:
                 unknown.append(advisory)
             elif result:
@@ -137,8 +139,8 @@ def build_evidence(services: list[dict], packages: list[dict], advisories: list[
             "stored": stored or "미설정",
             "computed": computed,
             "mismatch": mismatch,
-            # processor 는 safe 로 되돌리지 않으므로 safe 판정 불일치는 재분석으로 해결 안 됨
-            "mismatch_fixable": mismatch and computed != "safe",
+            # 전체 재분석은 비교가 가능해진 기존 unknown을 safe로 갱신할 수 있다.
+            "mismatch_fixable": mismatch and (computed != "safe" or (stored == "unknown" and bool(candidates))),
             "candidate_count": len(candidates),
             "matched": [_advisory_view(a) for a in matched],
             "unknown": [_advisory_view(a, installed, unknown=True) for a in unknown],
