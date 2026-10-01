@@ -42,7 +42,7 @@ def get_connection(end_point, retry, dates=[]):
 
     # 헤더 세팅, .env 에 토큰이 있을 경우 요청 제한 완화를 위하여 추가
     headers = {"Accept": "application/vnd.github+json"}
-    if GITHUB_TOKEN : headers['Authorization'] = GITHUB_TOKEN
+    if GITHUB_TOKEN: headers["Authorization"] = f"Bearer {GITHUB_TOKEN.strip()}"
 
     # 기본 : Global Advisory 중 최신 게시 순 조회
     params = {

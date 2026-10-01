@@ -1,7 +1,7 @@
 # 🛡️ SK Shieldus Rookies Mini Project
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.10 이상">
+  <img src="https://img.shields.io/badge/Python-3.11%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.11 이상">
   <img src="https://img.shields.io/badge/Flask-3.1%2B-455A64?style=flat-square&amp;logo=flask&amp;logoColor=white" alt="Flask 3.1 이상, 4.0 미만">
   <img src="https://img.shields.io/badge/Jinja2-Templates-B41717?style=flat-square&amp;logo=jinja&amp;logoColor=white" alt="Jinja2 Templates">
   <img src="https://img.shields.io/badge/Web-HTML%20%C2%B7%20CSS%20%C2%B7%20JS-D4A72C?style=flat-square" alt="HTML, CSS, JavaScript">
@@ -45,7 +45,7 @@ GitHub Security Advisories(보안 권고, 화면에서는 "보안 공지"로 표
 
 ## 빠른 시작
 
-Python **3.10 이상**과 Git이 필요합니다. 아래 명령은 프로젝트 루트에서 실행합니다.
+Python **3.11 이상**과 Git이 필요합니다. 아래 명령은 프로젝트 루트에서 실행합니다.
 
 ### 1. 저장소 내려받기
 
