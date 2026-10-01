@@ -27,7 +27,8 @@ def _parse_datetime(value) -> datetime | None:
 def _filter_exist_advisories(
     notion: NotionClient, data_source_id: str, advisories: list[dict]
 ) -> tuple[list[dict], list[tuple[str, dict]]]:
-    """Notion 에 이미 있는 advisory 를 (id, published_at) 를 키로 찾아 생성/수정 대상으로 분류
+    """Notion 에 이미 있는 advisory 를 id 를 키로 찾아 생성/수정 대상으로 분류
+    - published_at 은 수정되지 않는 값으로, 필터링 조건을 줄이기 위해 조회 조건으로 추가
 
     - id 가 같은 행이 없으면 → 생성 대상
     - 같은 행이 있고 updated_at 도 같으면 → 제외 (이미 적재됨)
@@ -71,6 +72,11 @@ def _filter_exist_advisories(
 
     # 3. Notion 에 이미 있는 (id, published_at) → 행 정보
     #    published_at 이 빈 행은 위 범위 조회에서 이미 빠지고, id 가 빈 행은 여기서 제외
+    #    Notion DB는 RDBMS와 달리 id 기반의 효율적인 대량 조회 및 고유성 제약에 한계가 있고, 
+    #    전체 조회 시 API 호출 비용과 처리 시간이 증가함
+    #    따라서 짧은 프로젝트 기간과 운영 부하를 고려하여 
+    #    일반적으로 변경되지 않는 published_at을 보조 조회 조건으로 사용해 조회 범위를 제한 
+    #    향후 저장소를 RDBMS로 전환할 경우 id에 인덱스 및 UNIQUE 제약을 적용하고 published_at 조건은 제거할 수 있다.
     #    이번 조회 대상 키만 다루며, 같은 키의 행이 여러 개면 첫 번째 행만 사용하고 나머지는 삭제 대상
     target_keys = {
         (advisory["id"], _parse_datetime(advisory.get("published_at")))

@@ -110,20 +110,6 @@ def get_connection(end_point, retry, dates=[]):
             # 재시도 전 0.5 초간 sleep
             time.sleep(0.5)
 
-
-# yusung:
-# get_connection params에 날짜 범위로직으로 수정 제안드립니다.. 
-# 날짜 범위는 args고정이 아니고 함수 호출부에서 인자로 넘길 수 있게 요청드립니다.
-# 일일 cron 돌리고, 00:00 ~ 23:59:59 까지의 updated_at 기준으로 
-# 변경사항 체크해서 서비스 패키지 업데이트 하는 방식으로 진행하려 합니다.
-
-# -> *args 에 보낼 자료형 string인지, datetime 인지 부탁드림다 
-
-# cwes.name 부분도 reason으로 평탄화해서 추가 부탁드립니다. -> id 는 필요없으실까여??
-
-# 오늘 할 일 1. 날짜 조건 추가(str), 페이징 하지말고 100건만, resturn 값 정제
-# cvss 제거
-# 노션 database 에서 제공하는 기능적 한계로 인해 flat 하게 넘김
 def get_advisories(dates=None, *, raise_on_error=False):
     """
     Github Advisories 를 갱신일 내림차순으로 최대 100건 조회하고 파싱한다.
