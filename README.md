@@ -10,18 +10,24 @@
   <img src="https://img.shields.io/badge/Slack-Alerts-4A154B?style=flat-square" alt="Slack Alerts">
 </p>
 
-### 보안 공지 수집 · 서비스 패키지 취약도 분석 대시보드
+### 보안 권고 수집 · 서비스 패키지 취약도 분석 대시보드
 
-GitHub Security Advisories에서 보안 공지를 수집해 Notion에 저장하고, 서비스에 사용 중인 패키지의 버전과 비교해 취약도를 확인하는 프로젝트입니다. Flask 웹 대시보드에서 수집, 분석, 결과 조회와 취약 근거 확인을 진행할 수 있습니다.
+GitHub Security Advisories(보안 권고, 화면에서는 "보안 공지"로 표기)에서 패키지 보안 취약점 공지를 수집해 Notion에 저장하고, 서비스에서 사용 중인 패키지 버전과 비교해 취약도를 판정하는 프로젝트입니다. Flask 웹 대시보드에서 수집, 분석, 결과 조회와 취약 근거 확인을 진행할 수 있습니다.
 
 **Python Team 8** · 김기현 · 노유성 · 엄동규 · 이시원 · 조성현
+
+1. **수집** — GitHub Security Advisories API에서 패키지 보안 취약점 공지를 수집
+2. **저장 · 판정** — Notion 데이터베이스에 저장하고, Python으로 서비스별 패키지 버전과 비교해 취약도를 판정하고 통계를 집계
+3. **시각화** — Flask와 HTML로 웹 대시보드에 표시
+4. **반영 · 알림** — 분석 결과는 Notion에 저장하고, 작업 완료·오류 알림은 Slack으로 전송
 
 | 구성 | 기술 |
 | --- | --- |
 | 서버 | Python · Flask |
-| 화면 | Jinja2 · HTML · CSS · JavaScript |
+| 화면 | Jinja2 · HTML · CSS · JavaScript (외부 차트 라이브러리 없음) |
 | 공지 수집 | GitHub Security Advisories API |
-| 데이터 저장 | Notion API |
+| 데이터 저장 | Notion API (`notion-client`) |
+| 버전 비교 | `packaging` · `semver` · `univers` |
 | 작업·오류 알림 | Slack Incoming Webhook |
 
 ---
@@ -160,7 +166,7 @@ flask run
 | 보안 공지 | `/advisories/list` | 저장된 공지, 패키지별 취약 버전 범위, 게시일·갱신일 |
 | 공지 분석 | `/advisories` | 심각도·생태계·게시 추이·패키지별 통계와 기간 필터 |
 | 실행 상태 | `/run-status` | 분석 실행, 진행 단계, 최근 실행 기록 |
-| 분석 결과 | `/results` | 저장된 서비스 패키지 취약도와 심각도 필터 |
+| 분석 결과 | `/results` | 서비스명으로 표시한 패키지 취약도와 서비스·심각도 필터 |
 | 취약 근거 | `/evidence` | 일치한 공지, 판정 불가 사유, 현재 비교 결과와 저장값의 차이 |
 | 프로젝트 가이드 | `/guide` | 프로젝트 설명 페이지 |
 
@@ -169,17 +175,31 @@ flask run
 대시보드 또는 보안 공지 화면에서 시작일·종료일을 지정하고 **신규 공지 가져오기**를 누릅니다.
 
 - 기간은 GitHub **게시일(UTC)** 기준이며 양 끝 날짜를 포함합니다. 기본값은 오늘을 포함한 최근 7일입니다.
-- 해당 기간의 공지를 갱신일 내림차순으로 **최대 100건** 가져옵니다. 전체 페이지 수집은 지원하지 않습니다.
+- 해당 기간의 **검토 완료(reviewed)** 공지를 갱신일 내림차순으로 **최대 100건** 가져옵니다. 전체 페이지 수집은 지원하지 않습니다.
+- 공지 하나에 패키지가 여러 개면 Notion 구조에 맞춰 **첫 번째 패키지와 첫 번째 CWE**만 저장합니다.
 - 수집 → 중복 확인 → Notion 저장 단계와 수집·제외·저장·실패 건수를 표시합니다.
 - GitHub 요청 실패와 정상 응답 0건을 구분합니다. 일부 저장 실패는 별도로 표시하며 같은 기간으로 재시도할 수 있습니다.
+- GitHub 요청은 서버·네트워크 오류를 최대 3회 재시도하고, 400·401·403·404는 연동 정보 확인이 필요하므로 바로 중단합니다. 재시도 중에는 로그만 남기고 최종 실패만 Slack으로 알립니다.
 - 작업 완료·실패 후 공지 조회 캐시를 갱신합니다. 패키지 취약도 판정은 이어서 **분석 실행**으로 진행합니다.
 
 <details>
 <summary>Notion 중복 확인 및 갱신 기준</summary>
 
-[sync_advisories_to_notion()](source/services/advisory_sync.py)은 게시일 범위로 기존 행을 조회한 뒤 `(id, published_at)`이 같은 공지를 비교합니다. `updated_at`이 같으면 제외하고, 다르면 기존 행을 갱신합니다. 같은 키의 기존 중복 행은 첫 행을 남기고 나머지를 Notion 휴지통으로 이동합니다.
+Notion은 고유키(UNIQUE) 제약이 없어 같은 기간을 다시 수집하면 같은 공지가 중복 저장될 수 있습니다. [sync_advisories_to_notion()](source/services/advisory_sync.py)은 저장 전에 이번에 수집한 공지 **ID로만** Notion을 조회하고(100개씩 묶어 `or` 조건으로 요청), 게시일·갱신일을 비교해 처리를 나눕니다.
 
-ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일이 하나도 없으면 기존 행의 조회 범위를 정할 수 없어 생성 대상으로 처리합니다. Notion 조회가 실패하면 적재를 진행하지 않습니다.
+| Notion 상태 | 처리 |
+| --- | --- |
+| 같은 ID의 행이 없음 | 새 행으로 저장 |
+| 같은 ID, `published_at`·`updated_at`도 같음 | 이미 저장된 공지로 보고 제외 |
+| 같은 ID, `published_at`이나 `updated_at`이 다르거나 비어 있음 | 새로 만들지 않고 기존 행을 GitHub 값으로 수정 |
+| 같은 ID의 행이 여러 개 | 하나만 남기고 나머지는 Notion 휴지통으로 이동 |
+
+같은 ID의 행이 여러 개일 때 남길 행은 ① 두 날짜가 GitHub과 모두 같은 행 ② 두 날짜가 모두 채워진 행 ③ 조회 순서상 첫 행 순으로 고릅니다. 삭제는 날짜가 비어 있거나 다른 행부터 진행하며, 삭제 건수는 서버 로그에만 남깁니다.
+
+- 날짜는 GitHub(`...Z`)과 Notion(`...+00:00`) 형식을 맞춘 뒤 UTC 분 단위로 비교합니다.
+- 수정할 때는 저장하는 11개 컬럼을 모두 GitHub 값으로 덮어씁니다. GitHub의 갱신일은 저장하지 않는 필드(설명, 참고 링크, CVSS 등)가 바뀌어도 갱신되므로, 화면에서는 `updated_at`만 바뀐 것처럼 보일 수 있습니다.
+- ID가 없는 공지는 식별할 수 없어 제외합니다. Notion 조회가 실패하면 중복 적재를 막기 위해 저장을 진행하지 않습니다.
+- Notion은 롤백을 지원하지 않으므로 도중에 실패해도 이미 저장된 행은 유지됩니다. 같은 기간으로 다시 실행하면 저장된 공지는 제외되어 안전하게 재시도할 수 있습니다.
 
 </details>
 
@@ -192,9 +212,14 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 | 취약점이 여러 개 일치 | `critical > high > medium > low` 중 가장 높은 값을 패키지별로 한 번 저장 |
 | 같은 패키지의 버전·범위를 비교할 수 없음 | 확인된 취약점이 없다면 `unknown`으로 저장하고 **알 수 없음** 표시 |
 | 확인된 취약점과 판정 불가 공지가 함께 있음 | 확인된 최고 심각도 유지 |
-| 모든 비교가 불일치 | 기존 값을 자동으로 `safe`로 되돌리는 처리는 수행하지 않음 |
+| 기존 `unknown`의 관련 공지를 전체 분석하여 모두 비교 가능·불일치 | `safe`로 갱신하여 이전 판정 불가를 해소 |
+| 그 외 모든 비교가 불일치·관련 공지 없음·기간을 제한한 분석 | 기존 취약 판정을 자동으로 해제하지 않음 |
 
-분석 결과는 전체 목록에 필터를 적용한 뒤 **50개씩** 표시합니다. 필터는 페이지 이동과 새로고침에도 유지되며 `all`, `critical`, `high`, `medium`, `low`, `safe`, `unknown`을 지원합니다. `unknown`에는 판정 불가, 빈 값과 기타 저장 상태가 포함됩니다. 생략하거나 잘못된 값을 입력하면 전체를 표시합니다.
+분석 결과는 서비스·취약도·검색 기준과 검색어를 고른 뒤 **검색 버튼 또는 Enter**로 조회합니다. 조건을 함께 적용한 결과를 **50개씩** 표시합니다. 서비스 선택 목록과 표에는 서비스명과 비즈니스 도메인을 함께 표시하며, 도메인 값이 없으면 서비스명만 표시합니다. 취약도별 버튼의 건수는 선택한 서비스와 검색 조건 기준입니다. 서비스 미연결 항목도 따로 볼 수 있습니다. 조건을 바꿔 검색하면 첫 페이지로 이동하고, 페이지 이동과 새로고침에는 모든 조건을 유지합니다.
+
+검색어(`q`)는 앞뒤 공백을 제거하고 대소문자 구분 없이 부분 일치로 검색합니다. 검색 기준(`search_field`)은 전체 항목(`all`), 패키지명(`package_name`), 패키지 ID(`package_id`), 서비스명(`service_name`), 비즈니스 도메인(`business_domain`), 생태계(`ecosystem`) 중 선택합니다. 기준을 생략하거나 잘못된 값을 입력하면 전체 항목을 검색하며, 검색어가 비어 있으면 선택한 서비스·취약도 필터만 적용합니다.
+
+취약도(`severity`)는 `all`, `critical`, `high`, `medium`, `low`, `safe`, `unknown`을 지원합니다. `unknown`에는 판정 불가, 빈 값과 기타 저장 상태가 포함됩니다. 취약도를 생략하거나 잘못된 값을 입력하면 전체 취약도를 표시합니다. 서비스(`service`)는 이름 변경·중복에 영향받지 않도록 내부적으로 Notion 서비스 페이지 ID를 사용하며, 생략하면 전체 서비스, `unlinked`는 서비스 미연결 항목입니다. 존재하지 않는 서비스 값은 전체로 바꾸지 않고 결과 0건으로 표시합니다.
 
 **취약 근거** 화면은 저장된 공지와 패키지를 다시 비교해 근거를 보여주는 읽기 전용 화면입니다. 근거 있음·판정 불가·저장값과 다름·전체 필터와 서비스·검색 조건을 제공하며, 이 화면을 조회해도 Notion 데이터는 수정되지 않습니다.
 
@@ -202,7 +227,10 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 <summary>분석 범위와 실행 상태 상세</summary>
 
 - [evaluate_impact(None, None)](source/services/processor.py)는 저장된 전체 공지를 분석합니다. 함수에 날짜를 전달하면 `updated_at` 기간을 적용하지만, 웹 실행 API는 기간·신규 수집 옵션을 받지 않습니다.
-- 버전 비교는 숫자와 점으로 된 버전, 쉼표로 연결한 비교 조건을 지원합니다. 미지원 표기나 빈 값은 판정 불가로 처리하며 별도 `univers` 라이브러리는 사용하지 않습니다.
+- 버전 비교는 [version_comparison.py](source/services/version_comparison.py)에서 쉼표로 연결한 `<`, `<=`, `>`, `>=`, `=`, `==`, `!=` 조건을 모두 만족하는지 확인합니다. `≥`, `≤`, `≠`도 지원합니다. `processor.py`의 분석 저장과 취약 근거 화면은 같은 함수를 사용합니다.
+- 등록된 13개 생태계를 모두 처리합니다. pip/PyPI는 `packaging`의 PEP 440, NuGet·Maven·RubyGems는 [`univers`](https://github.com/aboutcode-org/univers)의 전용 비교기를 사용합니다. NuGet의 네 번째 숫자·대소문자 무시, Maven의 `Final`·`GA`·`RELEASE` 별칭, RubyGems의 점으로 구분한 사전 릴리스도 반영합니다.
+- npm·Go·Rust·Erlang·GitHub Actions·Swift는 `semver`로 비교하며, `v` 접두사와 Go의 pseudo-version을 처리합니다. Composer는 `dev < alpha < beta < RC < stable < patch` 순서를, Pub은 빌드 식별자까지 비교하는 고유 규칙을 적용합니다. 생태계 이름의 대소문자와 PyPI/pip, Cargo/rust, Hex/erlang 등의 별칭도 정규화합니다.
+- `other`와 미등록 생태계도 숫자·점 또는 SemVer 표기라면 비교합니다. 순서를 정의할 수 없는 임의 태그·브랜치·커밋 해시, 빈 값, 미지원 범위 문법(`||`, 와일드카드, `^`, `~`, 네이티브 구간 표기)은 판정 불가로 남깁니다. 취약 범위는 사전 릴리스도 명시된 조건으로 판정하며, 패키지 설치 도구의 사전 릴리스 자동 제외 규칙은 적용하지 않습니다.
 - 실행 중에는 분석 버튼을 비활성화하고, 중복 실행 요청에 HTTP `409`와 기존 작업을 반환합니다.
 - 저장 도중 실패하면 성공으로 표시하지 않습니다. 이미 저장된 건수와 실패 안내를 남기고 조회 캐시를 갱신합니다.
 - 분석 상태와 최근 **20건**의 기록은 서버 메모리에 보관합니다. 수집 상태도 메모리에 보관하므로 현재 구조는 **단일 서버 프로세스**용입니다.
@@ -259,7 +287,7 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 | GET | `/api/health` | 웹 서버 응답 확인. 외부 서비스 상태는 포함하지 않음 |
 | GET | `/api/advisories` | Notion에 저장된 보안 공지 목록 |
 | GET | `/api/advisories/analysis` | 공지 통계와 게시일 기간 필터 |
-| GET | `/api/results` | 저장된 패키지 취약도와 심각도 필터 |
+| GET | `/api/results` | 저장된 패키지 취약도와 서비스·심각도 필터 |
 | GET | `/api/cache-status?view=dashboard` | 데이터 준비·갱신 상태. Notion 요청 없음 |
 | GET | `/api/run-status` | 현재 분석 단계·건수·최근 실행 기록 |
 | GET | `/api/advisories/sync-status` | 최근 수집의 기간·진행 상태·수집·제외·저장·실패 건수 |
@@ -269,13 +297,15 @@ ID가 없는 공지는 제외합니다. 수집한 공지에 유효한 게시일�
 ```text
 /results?severity=high
 /api/results?severity=high
+/results?severity=high&search_field=package_name&q=django
+/api/results?severity=high&search_field=package_name&q=django
 /advisories?started_at=2026-09-01&ended_at=2026-09-30
 /api/advisories/analysis?started_at=2026-09-01&ended_at=2026-09-30
 ```
 
 캐시를 사용하는 JSON API는 최초 데이터 준비 중 HTTP `202`, `status: loading`, `Retry-After: 2`를 반환합니다. 정상·오류 응답에는 `cache` 상태가 포함됩니다. 잘못된 기간은 `400`, Notion 조회 실패는 `503`으로 구분합니다.
 
-분석 결과 API의 `results`와 `filtered_count`는 선택한 필터 기준이며, `package_count`와 `severity_counts`는 전체 저장 데이터 기준입니다. 조회 실패 시 건수는 `null`로 반환합니다.
+분석 결과 API의 `results`와 `filtered_count`는 서비스·취약도·검색 조건을 함께 적용한 기준이며, `package_count`와 `severity_counts`는 전체 저장 데이터 기준입니다. `service_severity_counts`는 선택한 서비스의 취약도별 건수이고, `search_severity_counts`는 여기에 검색 조건도 적용한 취약도별 건수입니다. `service_options`는 서비스 선택 값과 표시 이름 목록입니다. 패키지 조회 실패 시 건수는 `null`로 반환합니다.
 
 ### 실행 API
 
@@ -298,12 +328,12 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/여기에_발급받은_웹훅
 
 | 상황 | 알림 내용 |
 | --- | --- |
-| GitHub 수집 성공 | `[작업] GitHub 수집` — 수집 건수. 정상 응답 0건도 전송 |
-| 취약도 분석·Notion 반영 완료 | 분석 범위, 공지·검사 패키지·취약점 일치·영향 패키지·판정 불가 건수 |
-| 서버·작업 오류 | GitHub 요청 실패, 파싱·파일 저장, Notion 연결·조회·저장, 설정 로딩 오류 |
+| 공지 수집·Notion 적재 완료 | `[작업] 보안 공지 Notion 적재` — 기간, 수집·생성·수정·제외·실패 건수와 실패 사유(최대 5건) |
+| 취약도 분석·Notion 반영 완료 | `[작업] 취약도 분석` — 분석 범위, 공지·검사 패키지·취약점 일치·영향 패키지·알 수 없음·판정 불가 해소 건수 |
+| 서버·작업 오류 | GitHub 최종 수집 실패, 파싱·파일 저장, Notion 연결·조회·저장, 설정 로딩 오류 |
 | 웹·프로세스 오류 | Flask 미처리 예외, HTTP 5xx, ERROR 이상 로그, 메인·백그라운드 스레드 미처리 예외 |
 
-`main.py`와 웹 서버에 오류 알림이 연결되어 있습니다. 알림 기능은 작업을 새로 예약하지 않으며, 실제 분석 완료 알림은 모든 Notion 업데이트가 성공한 뒤 전송합니다.
+`main.py`와 웹 서버에 오류 알림이 연결되어 있습니다. 알림 기능은 작업을 새로 예약하지 않습니다. 적재 완료 알림은 적재가 끝난 뒤 한 번, 분석 완료 알림은 모든 Notion 업데이트가 성공한 뒤 전송합니다. GitHub 요청을 재시도하는 동안에는 알림을 보내지 않습니다.
 
 <details>
 <summary>알림 호출 예시와 전송 정책</summary>
@@ -340,15 +370,16 @@ python-project/
 ├── source/
 │   ├── common/
 │   │   ├── github_advisory/         # GitHub 보안 공지 수집
-│   │   ├── notion/                  # Notion 클라이언트 · 요청 정책
+│   │   ├── notion/                  # Notion 클라이언트(notion.py) · 요청 간격·재시도 정책(query_policy.py)
 │   │   └── slack/                   # 작업·오류 알림
 │   ├── config/                      # 공개 설정 · 환경변수 로딩
 │   ├── databases/schemas/           # Notion 데이터 구조
 │   ├── example/                     # 예시 데이터 · 서비스 패키지 시드 도구
 │   ├── services/
-│   │   ├── advisory_sync.py         # 공지 중복 확인 · Notion 적재
+│   │   ├── advisory_sync.py         # 공지 중복 확인 · Notion 적재 · 적재 결과 알림
 │   │   ├── advisory_analysis.py     # 공지 통계 집계
-│   │   └── processor.py             # 패키지 버전 비교 · 취약도 저장
+│   │   ├── processor.py             # 공지와 패키지 매칭 · 취약도 판정·저장
+│   │   └── version_comparison.py    # 생태계별 버전 비교 규칙
 │   └── web/
 │       ├── app.py                   # Flask 앱 생성 · 화면 및 API 라우트
 │       ├── data_cache.py            # 조회 캐시 · 백그라운드 갱신
@@ -372,6 +403,7 @@ python-project/
 | `templates/advisory_charts.html` | 대시보드·공지 분석이 공유하는 차트 |
 | `templates/advisory_sync.html` | 공지 수집 입력과 진행 상태 |
 | `templates/evidence.html` | 취약 근거 전용 화면 |
+| `templates/guide.html` | 프로젝트 소개·발표용 안내 화면 (`/guide`) |
 | `static/css/style.css` | 대시보드 스타일 |
 | `static/js/dashboard-cache.js` | 갱신 상태 확인·자동 새로고침·시간 표시 |
 | `static/js/advisory-sync.js` | 공지 수집 요청·진행 상태 표시 |

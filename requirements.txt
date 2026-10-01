@@ -2,3 +2,6 @@ python-dotenv==1.2.3
 Flask>=3.1,<4.0
 notion-client>=2.5,<3.0
 requests>=2.32,<3.0
+packaging>=24.0,<27.0
+semver>=3.0,<4.0
+univers==32.0.1

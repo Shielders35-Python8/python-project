@@ -24,7 +24,8 @@ from source.services.advisory_sync import sync_advisories_to_notion
 from source.web.advisory_sync_runs import AdvisorySyncRuns
 from source.web.analysis_runs import AnalysisRuns
 from source.web.dashboard_data import (
-    RESULT_SEVERITY_FILTERS, build_saved_package_results, filter_saved_package_results,
+    RESULT_SEARCH_FIELDS, RESULT_SEVERITY_FILTERS, build_result_service_options,
+    build_saved_package_results, filter_saved_package_results,
 )
 from source.web.advisory_list import build_saved_advisories
 from source.web.data_cache import DashboardDataCache
@@ -126,7 +127,9 @@ def create_app(config=None) -> Flask:
     @app.context_processor
     def saved_data_context():
         today = datetime.now(timezone.utc).date()
-        values = {key: request.args[key] for key in ("severity", "page", "started_at", "ended_at")
+        values = {key: request.args[key] for key in (
+            "severity", "service", "q", "search_field", "page", "started_at", "ended_at",
+        )
                   if key in request.args}
         values["refresh"] = "1"
         return {
@@ -186,6 +189,9 @@ def create_app(config=None) -> Flask:
         except Exception as error:
             app.logger.warning("Notion 패키지 취약도 조회 실패: %s", type(error).__name__)
             data["results_error"] = "Notion 패키지 취약도 조회 실패 · 새로고침해 주세요."
+        data["service_options"] = build_result_service_options(
+            services, data["results"], request.args.get("service"),
+        )
         return data
 
     def render_dashboard_page(active_page: str):
@@ -218,6 +224,9 @@ def create_app(config=None) -> Flask:
         filtered = filter_saved_package_results(
             service_data.get("results", []),
             request.args.get("severity") if active_page == "results" else None,
+            request.args.get("service") if active_page == "results" else None,
+            request.args.get("q") if active_page == "results" else None,
+            request.args.get("search_field") if active_page == "results" else None,
         )
         results = filtered["results"]
         selected_severity = filtered["severity"]
@@ -229,10 +238,17 @@ def create_app(config=None) -> Flask:
             **service_data,
             result_severity=selected_severity,
             result_severity_label=RESULT_SEVERITY_FILTERS[selected_severity],
+            result_service=filtered["service"],
+            result_query=filtered["q"],
+            result_search_field=filtered["search_field"],
+            result_search_label=RESULT_SEARCH_FIELDS[filtered["search_field"]],
+            result_search_options=RESULT_SEARCH_FIELDS,
+            result_service_label=next((option["label"] for option in service_data.get("service_options", [])
+                                       if option["value"] == filtered["service"]), "전체 서비스"),
             filtered_result_count=len(results) if not service_data.get("results_error") else None,
             result_filter_options=[{
                 "value": value, "label": label,
-                "count": filtered["counts"][value] if not service_data.get("results_error") else None,
+                "count": filtered["search_counts"][value] if not service_data.get("results_error") else None,
             } for value, label in RESULT_SEVERITY_FILTERS.items()],
             visible_results=results[(page - 1) * page_size:page * page_size],
             result_page=page,
@@ -334,7 +350,10 @@ def create_app(config=None) -> Flask:
     @app.get("/api/results")
     def get_results():
         data = load_service_results()
-        filtered = filter_saved_package_results(data["results"], request.args.get("severity"))
+        filtered = filter_saved_package_results(
+            data["results"], request.args.get("severity"), request.args.get("service"),
+            request.args.get("q"), request.args.get("search_field"),
+        )
         data["results"] = filtered["results"]
         status = "error" if data["results_error"] else "partial" if data["service_error"] else "ok"
         return jsonify(
@@ -342,8 +361,13 @@ def create_app(config=None) -> Flask:
             source="notion",
             result_type="saved_package_vulnerability",
             severity=filtered["severity"],
+            service=filtered["service"],
+            q=filtered["q"],
+            search_field=filtered["search_field"],
             filtered_count=len(data["results"]) if not data["results_error"] else None,
             severity_counts=filtered["counts"] if not data["results_error"] else None,
+            service_severity_counts=filtered["service_counts"] if not data["results_error"] else None,
+            search_severity_counts=filtered["search_counts"] if not data["results_error"] else None,
             message=data["results_error"] or data["service_error"] or "Notion에 저장된 패키지 취약도입니다.",
             **data,
         ), 503 if data["results_error"] else 200

@@ -227,25 +227,29 @@ class CachedDashboardRoutesTests(unittest.TestCase):
 
     def test_tabs_filters_and_pagination_share_one_snapshot(self):
         self.warm()
-        for path in ("/", "/results", "/results?severity=high&page=2", "/advisories/list",
+        for path in ("/", "/results", "/results?severity=high&page=2", "/results?service=s", "/advisories/list",
                      "/advisories/list?page=2", "/advisories?started_at=2026-09-01",
                      "/api/results?severity=high", "/api/advisories", "/api/advisories/analysis"):
             self.assertEqual(self.client.get(path).status_code, 200, path)
         self.assertCountEqual(self.calls, self.data)
-        result = self.client.get("/api/results?severity=high").get_json()
+        result = self.client.get("/api/results?severity=high&service=s&q=cached&search_field=package_name").get_json()
         self.assertEqual(result["filtered_count"], 1)
+        self.assertEqual(result["service"], "s")
+        self.assertEqual(result["q"], "cached")
+        self.assertCountEqual(self.calls, self.data)
         self.assertTrue(result["cache"]["ready"])
 
     def test_expired_data_renders_while_background_refresh_is_pending(self):
         self.warm()
         self.now += 61
         self.release.clear()
-        response = self.client.get("/results?severity=high&page=2")
+        response = self.client.get("/results?severity=high&service=s&page=2&q=cached&search_field=package_name")
         self.assertEqual(response.status_code, 200)
         self.assertIn("Cached package", response.text)
         self.assertIn("기존 데이터를 먼저 표시합니다.", response.text)
         self.assertIn("refresh=1", response.text)
         self.assertIn("severity=high", response.text)
+        self.assertIn('href="/results?severity=high&amp;service=s&amp;q=cached&amp;search_field=package_name&amp;page=2&amp;refresh=1"', response.text)
         self.assertTrue(self.client.get("/api/cache-status?view=results").get_json()["refreshing"])
 
     def test_invalid_dates_health_and_status_do_not_start_notion_queries(self):

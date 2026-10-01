@@ -56,7 +56,7 @@ class DashboardResultsTests(unittest.TestCase):
         self.assertEqual(self.rows.call_count, 3)
         response = self.client.get("/results")
         self.assertIn("저장된 패키지 6개 · 취약 상태 4개 · safe 1개", response.text)
-        self.assertIn("SVC-001", response.text)
+        self.assertNotIn("SVC-001", response.text)
         self.assertIn("web-gateway", response.text)
         self.assertIn("safe는 등록 시 기본값", response.text)
         self.assertNotIn("취약 범위 밖", response.text)
@@ -251,10 +251,185 @@ class DashboardResultsTests(unittest.TestCase):
         self.assertIsNone(api.get_json()["severity_counts"])
 
     def test_main_dashboard_summary_is_not_filtered_by_results_tab_parameter(self):
-        response = self.client.get("/?severity=safe")
+        response = self.client.get("/?severity=safe&service=service-2&q=no-match&search_field=package_name")
         self.assertIn('aria-label="취약 상태로 저장된 패키지 4개">4</p>', response.text)
         self.assertIn('aria-label="관리 패키지 6개">6</p>', response.text)
         self.assertNotIn('aria-label="취약도 필터"', response.text)
+
+    def test_service_filter_combines_with_severity_and_counts_shared_packages_once(self):
+        self.data["packages"][0]["service_id"] = ["service-2"]
+        self.data["packages"][2]["service_id"] = ["service-1", "service-2"]
+        data = self.client.get("/api/results?service=service-2&severity=high").get_json()
+        self.assertEqual(data["service"], "service-2")
+        self.assertEqual([row["package_id"] for row in data["results"]], ["PKG-003"])
+        self.assertEqual((data["package_count"], data["filtered_count"]), (6, 1))
+        self.assertEqual(data["severity_counts"]["all"], 6)
+        self.assertEqual(data["service_severity_counts"]["all"], 2)
+        self.assertEqual(data["service_severity_counts"]["safe"], 1)
+        page = self.client.get("/results?service=service-2&severity=high").text
+        self.assertIn('<option value="service-2" selected>order-service</option>', page)
+        self.assertIn('<option value="high" selected>high</option>', page)
+        self.assertIn('href="/results?service=service-2">전체 <span>2</span>', page)
+        self.assertIn('href="/results?severity=safe&amp;service=service-2"', page)
+        self.assertIn("order-service · high · 1개 표시 / 저장된 패키지 6개", page)
+        self.assertIn("package-003", page)
+        self.assertNotIn("package-001", page)
+        self.assertNotIn("SVC-002", page)
+
+    def test_service_filter_keeps_distinct_relations_when_names_are_identical_or_changed(self):
+        self.data["services"][1]["resource_name"] = "web-gateway"
+        self.data["packages"][0]["service_id"] = ["service-2"]
+        data = self.client.get("/api/results?service=service-2").get_json()
+        self.assertEqual([row["package_id"] for row in data["results"]], ["PKG-001"])
+        self.data["services"][1]["resource_name"] = "주문 서비스"
+        page = self.client.get("/results?service=service-2").text
+        self.assertIn('<option value="service-2" selected>주문 서비스</option>', page)
+        self.assertIn('<span class="service-name">주문 서비스</span>', page)
+        self.assertIn("package-001", page)
+        self.assertNotIn("package-002", page)
+
+    def test_service_filter_handles_unlinked_deleted_and_empty_services(self):
+        self.data["packages"][0]["service_id"] = []
+        self.data["packages"][1]["service_id"] = ["removed-service"]
+        for service, expected in (("unlinked", ["PKG-001"]), ("removed-service", ["PKG-002"]),
+                                  ("service-2", []), ("missing-service", [])):
+            with self.subTest(service=service):
+                data = self.client.get("/api/results", query_string={"service": service}).get_json()
+                self.assertEqual(data["service"], service)
+                self.assertEqual([row["package_id"] for row in data["results"]], expected)
+                page = self.client.get("/results", query_string={"service": service}).text
+                self.assertIn(f'<option value="{service}" selected>', page)
+                if not expected:
+                    self.assertIn("선택한 서비스·취약도에 해당하는 패키지가 없습니다.", page)
+                    self.assertNotIn("등록된 서비스 패키지가 없습니다.", page)
+
+    def test_service_filter_applies_before_pagination_and_preserves_links(self):
+        self.data["packages"] = [self.package(i, "high") for i in range(1, 56)] + [self.package(100, "high")]
+        self.data["packages"][-1]["service_id"] = ["service-2"]
+        first = self.client.get("/results?service=service-1&severity=high").text
+        last = self.client.get("/results?service=service-1&severity=high&page=2").text
+        self.assertIn("필터 결과 55개 중 1–50개", first)
+        self.assertIn('href="/results?page=2&amp;severity=high&amp;service=service-1#results"', first)
+        self.assertIn("필터 결과 55개 중 51–55개", last)
+        self.assertIn("package-055", last)
+        self.assertNotIn("package-050", last)
+        self.assertNotIn("package-100", last)
+        self.assertIn('href="/results?refresh=1&amp;severity=high&amp;service=service-1&amp;page=2"', last)
+        self.assertIn('href="/results?page=1&amp;severity=high&amp;service=service-1#results"', last)
+        self.assertIn('href="/results?severity=safe&amp;service=service-1"', last)
+        self.assertIn('href="/results">필터 초기화</a>', last)
+
+    def test_service_lookup_failure_preserves_filter_using_package_relations(self):
+        self.data["packages"][0]["service_id"] = ["service-2"]
+        self.fail_sources.add("services")
+        with self.assertLogs(self.web.__name__, level="WARNING"):
+            data = self.client.get("/api/results?service=service-2").get_json()
+            page = self.client.get("/results?service=service-2").text
+        self.assertEqual(data["status"], "partial")
+        self.assertEqual([row["package_id"] for row in data["results"]], ["PKG-001"])
+        self.assertIn('<option value="service-2" selected>서비스 확인 필요</option>', page)
+        self.assertIn("서비스 정보를 불러오지 못해", page)
+        self.assertNotIn("package-002", page)
+
+    def test_service_filter_does_not_report_zero_when_packages_cannot_be_loaded(self):
+        self.fail_sources.add("packages")
+        with self.assertLogs(self.web.__name__, level="WARNING"):
+            response = self.client.get("/api/results?service=service-2")
+            page = self.client.get("/results?service=service-2").text
+        self.assertEqual(response.status_code, 503)
+        self.assertIsNone(response.get_json()["filtered_count"])
+        self.assertIsNone(response.get_json()["service_severity_counts"])
+        self.assertIn('<option value="service-2" selected>order-service</option>', page)
+        self.assertIn("패키지 취약도를 불러오지 못했습니다.", page)
+        self.assertNotIn("0개 표시", page)
+
+    def test_search_supports_each_field_and_normalizes_case_and_whitespace(self):
+        self.data["services"][1]["business_domain"] = "주문 관리"
+        self.data["packages"][2].update(service_id=["service-2"], ecosystem="PyPI")
+        for field, query in (("package_name", "PACKAGE-003"), ("package_id", "pkg-003"),
+                             ("ecosystem", "pypi"), ("service_name", "ORDER"),
+                             ("business_domain", "주문"), ("all", "주문")):
+            with self.subTest(field=field):
+                params = {"search_field": f" {field.upper()} ", "q": f" {query} "}
+                data = self.client.get("/api/results", query_string=params).get_json()
+                self.assertEqual(data["q"], query)
+                self.assertEqual(data["search_field"], field)
+                self.assertEqual([row["package_id"] for row in data["results"]], ["PKG-003"])
+                html = self.client.get("/results", query_string=params).text
+                self.assertIn("package-003", html)
+                self.assertNotIn("package-001", html)
+                self.assertIn(f'value="{query}"', html)
+        wrong_field = self.client.get("/api/results?q=주문&search_field=package_name").get_json()
+        self.assertEqual(wrong_field["filtered_count"], 0)
+
+    def test_search_combines_with_filters_without_changing_saved_or_service_counts(self):
+        self.data["packages"][0]["service_id"] = ["service-2"]
+        self.data["packages"][2]["service_id"] = ["service-1", "service-2"]
+        params = {"service": "service-2", "severity": "high", "q": "003", "search_field": "package_name"}
+        data = self.client.get("/api/results", query_string=params).get_json()
+        self.assertEqual([row["package_id"] for row in data["results"]], ["PKG-003"])
+        self.assertEqual(data["package_count"], 6)
+        self.assertEqual(data["severity_counts"]["all"], 6)
+        self.assertEqual(data["service_severity_counts"]["all"], 2)
+        self.assertEqual(data["search_severity_counts"]["all"], 1)
+        self.assertEqual(data["search_severity_counts"]["safe"], 0)
+        self.assertEqual(data["search_severity_counts"]["high"], 1)
+        html = self.client.get("/results", query_string=params).text
+        self.assertIn('<option value="package_name" selected>패키지명</option>', html)
+        self.assertIn('href="/results?service=service-2&amp;q=003&amp;search_field=package_name">전체 <span>1</span>', html)
+        params["severity"] = "safe"
+        self.assertEqual(self.client.get("/api/results", query_string=params).get_json()["filtered_count"], 0)
+
+    def test_search_handles_missing_values_blank_queries_and_invalid_search_fields(self):
+        self.data["packages"] = [self.package(1, "safe")]
+        self.data["packages"][0].update(service_id=[], package_name=None, ecosystem=None, id=None)
+        for field in self.web.RESULT_SEARCH_FIELDS:
+            data = self.client.get("/api/results", query_string={"q": "missing", "search_field": field}).get_json()
+            self.assertEqual(data["filtered_count"], 0)
+        blank = self.client.get("/api/results?q=+++&search_field=business_domain").get_json()
+        self.assertEqual((blank["q"], blank["filtered_count"]), ("", 1))
+        self.data["packages"][0]["package_name"] = "Alpha.Core"
+        invalid = self.client.get("/api/results?q=alpha&search_field=invalid").get_json()
+        self.assertEqual((invalid["search_field"], invalid["filtered_count"]), ("all", 1))
+
+    def test_search_applies_before_pagination_and_preserves_all_conditions_in_links(self):
+        self.data["packages"] = [self.package(i, "high") for i in range(1, 66)]
+        for package in self.data["packages"][:55]:
+            package["package_name"] = "match-" + package["package_name"]
+        params = {"service": "service-1", "severity": "high", "q": "match", "search_field": "package_name"}
+        first = self.client.get("/results", query_string=params).text
+        self.assertIn("필터 결과 55개 중 1–50개", first)
+        self.assertIn('href="/results?page=2&amp;severity=high&amp;service=service-1&amp;q=match&amp;search_field=package_name#results"', first)
+        params["page"] = 2
+        last = self.client.get("/results", query_string=params).text
+        self.assertIn("필터 결과 55개 중 51–55개", last)
+        self.assertIn("match-package-055", last)
+        self.assertNotIn("match-package-050", last)
+        self.assertNotIn("package-056", last)
+        self.assertIn('href="/results?refresh=1&amp;severity=high&amp;service=service-1&amp;page=2&amp;q=match&amp;search_field=package_name"', last)
+        self.assertIn('href="/results?severity=safe&amp;service=service-1&amp;q=match&amp;search_field=package_name"', last)
+        self.assertIn('href="/results">필터 초기화</a>', last)
+
+    def test_search_escapes_input_and_distinguishes_no_matches_from_loading_failure(self):
+        query = '\"><script>alert(1)</script>&주문'
+        self.data["packages"][0]["package_name"] = query
+        response = self.client.get("/results", query_string={"q": query})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("<script>alert(1)</script>", response.text)
+        self.assertIn("&lt;script&gt;alert(1)&lt;/script&gt;&amp;주문", response.text)
+        params = {"q": "no-match", "service": "service-1", "severity": "high"}
+        empty = self.client.get("/results", query_string=params).text
+        self.assertIn("선택한 필터와 검색어에 해당하는 패키지가 없습니다.", empty)
+        self.assertIn('href="/results?service=service-1&amp;severity=high">검색어 지우기</a>', empty)
+        self.assertNotIn("등록된 서비스 패키지가 없습니다.", empty)
+        self.fail_sources.add("packages")
+        with self.assertLogs(self.web.__name__, level="WARNING"):
+            failed = self.client.get("/results", query_string=params).text
+            data = self.client.get("/api/results", query_string=params).get_json()
+        self.assertIn("패키지 취약도를 불러오지 못했습니다.", failed)
+        self.assertNotIn("0개 표시", failed)
+        self.assertIsNone(data["search_severity_counts"])
+        self.assertIsNone(data["filtered_count"])
 
 
 if __name__ == "__main__":

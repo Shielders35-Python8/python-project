@@ -41,15 +41,48 @@ class EvidenceRuleTests(unittest.TestCase):
         self.assertEqual(row["candidate_count"], 3)
 
     def test_unknown_only_when_nothing_matched(self):
-        beta = advisory("B", "lib", ">= 2.0.0-beta.1, < 2.0.0-beta.4", "critical")
+        invalid = advisory("B", "lib", ">= 2.0.0-beta..1, < 2.0.0-beta.4", "critical")
         matched = build_evidence(SERVICES, [package("P", "lib", "1.0.0")],
-                                 [beta, advisory("A", "lib", "< 1.1", "low")])[0]
+                                 [invalid, advisory("A", "lib", "< 1.1", "low")])[0]
         self.assertEqual((matched["computed"], len(matched["unknown"])), ("low", 1))
-        only = build_evidence(SERVICES, [package("P", "lib", "1.0.0")], [beta])[0]
+        only = build_evidence(SERVICES, [package("P", "lib", "1.0.0")], [invalid])[0]
         self.assertEqual(only["computed"], "unknown")
         self.assertEqual(only["unknown"][0]["reason"], "공지 범위 표기")
-        weird = build_evidence(SERVICES, [package("P", "lib", "v1.0")], [advisory("A", "lib", "< 2.0")])[0]
+        weird = build_evidence(SERVICES, [package("P", "lib", "latest")], [advisory("A", "lib", "< 2.0")])[0]
         self.assertEqual(weird["unknown"][0]["reason"], "설치 버전 표기")
+
+    def test_prerelease_evidence_uses_the_package_ecosystem(self):
+        expression = ">= 3.0.0-alpha.1, <= 3.0.0-beta.1"
+        for ecosystem, version, expected in (
+            ("npm", "3.0.0-alpha.2", "high"), ("npm", "3.0.0-beta.1", "high"),
+            ("npm", "3.0.0-beta.2", "safe"), ("npm", "3.0.0", "safe"),
+            ("pip", "3.0.0b1", "high"), ("pip", "3.0.0rc1", "safe"),
+        ):
+            with self.subTest(ecosystem=ecosystem, version=version):
+                row = build_evidence(SERVICES, [package("P", "lib", version, ecosystem=ecosystem)],
+                                     [advisory("A", "lib", expression, ecosystem=ecosystem)])[0]
+                self.assertEqual(row["computed"], expected)
+                self.assertEqual(row["unknown"], [])
+                self.assertEqual(len(row["matched"]), int(expected == "high"))
+
+    def test_valid_prerelease_with_invalid_range_reports_range_reason(self):
+        for ecosystem, version in (("npm", "3.0.0-alpha.1"), ("pip", "3.0.0a1")):
+            with self.subTest(ecosystem=ecosystem):
+                row = build_evidence(SERVICES, [package("P", "lib", version, ecosystem=ecosystem)],
+                                     [advisory("A", "lib", "< 3.0..0", ecosystem=ecosystem)])[0]
+                self.assertEqual(row["unknown"][0]["reason"], "공지 범위 표기")
+
+    def test_reported_nuget_package_is_outside_range_not_unknown(self):
+        row = build_evidence(SERVICES, [package("PKG-030", "CliInvoke", "2.9.4", "unknown", "nuget")],
+                             [advisory("GHSA-j73w-8hfr-4gc9", "CliInvoke",
+                                       ">= 3.0.0-alpha.1, <= 3.0.0-beta.1", ecosystem="nuget")])[0]
+        self.assertEqual(row["candidate_count"], 1)
+        self.assertEqual((row["computed"], row["matched"], row["unknown"]), ("safe", [], []))
+
+    def test_aliases_match_advisories_for_the_same_ecosystem(self):
+        row = build_evidence(SERVICES, [package("P", "lib", "3.0.0b1", ecosystem="PyPI")],
+                             [advisory("A", "lib", "<= 3.0.0-beta.1", ecosystem="pip")])[0]
+        self.assertEqual(row["computed"], "high")
 
     def test_github_unknown_severity_does_not_look_safe(self):
         row = build_evidence(SERVICES, [package("P", "lib", "1.0")],
