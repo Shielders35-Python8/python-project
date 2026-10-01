@@ -1,5 +1,15 @@
 # 🛡️ SK Shieldus Rookies Mini Project
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&amp;logo=python&amp;logoColor=white" alt="Python 3.10 이상">
+  <img src="https://img.shields.io/badge/Flask-3.1%2B-455A64?style=flat-square&amp;logo=flask&amp;logoColor=white" alt="Flask 3.1 이상, 4.0 미만">
+  <img src="https://img.shields.io/badge/Jinja2-Templates-B41717?style=flat-square&amp;logo=jinja&amp;logoColor=white" alt="Jinja2 Templates">
+  <img src="https://img.shields.io/badge/Web-HTML%20%C2%B7%20CSS%20%C2%B7%20JS-D4A72C?style=flat-square" alt="HTML, CSS, JavaScript">
+  <img src="https://img.shields.io/badge/GitHub-Advisories-2D5347?style=flat-square&amp;logo=github&amp;logoColor=white" alt="GitHub Security Advisories">
+  <img src="https://img.shields.io/badge/Notion-Database-52796F?style=flat-square&amp;logo=notion&amp;logoColor=white" alt="Notion Database">
+  <img src="https://img.shields.io/badge/Slack-Alerts-4A154B?style=flat-square" alt="Slack Alerts">
+</p>
+
 ### 보안 공지 수집 · 서비스 패키지 취약도 분석 대시보드
 
 GitHub Security Advisories에서 보안 공지를 수집해 Notion에 저장하고, 서비스에 사용 중인 패키지의 버전과 비교해 취약도를 확인하는 프로젝트입니다. Flask 웹 대시보드에서 수집, 분석, 결과 조회와 취약 근거 확인을 진행할 수 있습니다.
