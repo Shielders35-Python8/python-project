@@ -19,6 +19,7 @@
           <a class="navigation-link{% if active_page == 'advisories' %} is-current{% endif %}" href="{{ url_for('advisory_dashboard') }}"{% if active_page == 'advisories' %} aria-current="page"{% endif %}>공지 분석</a>
           <a class="navigation-link{% if active_page == 'run_status' %} is-current{% endif %}" href="{{ url_for('run_status') }}"{% if active_page == 'run_status' %} aria-current="page"{% endif %}>실행 상태</a>
           <a class="navigation-link{% if active_page == 'results' %} is-current{% endif %}" href="{{ url_for('analysis_results') }}"{% if active_page == 'results' %} aria-current="page"{% endif %}>분석 결과</a>
+                    <a class="navigation-link" href="{{ url_for('evidence.evidence_page') }}">취약 근거</a>
         </nav>
         <span class="server-status"><span class="status-dot" aria-hidden="true"></span>웹 서버 실행 중</span>
       </div>
