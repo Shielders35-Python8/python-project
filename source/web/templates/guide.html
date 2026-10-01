@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#faf9f6">
+    <title>사용 안내 · ROOKIES</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+      .guide-toc { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 8px; padding: 14px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--line); font-size: 13px; }
+      .guide-toc a { text-decoration: none; color: var(--muted); }
+      .guide-toc a:hover { color: var(--accent); }
+      .guide-section { margin-top: 56px; }
+      .guide-section h3 { font-size: 15px; margin: 28px 0 10px; }
+      .guide-section p + p { margin-top: 10px; }
+      .guide-section ul { margin: 10px 0 0; padding-left: 20px; }
+      .guide-section li + li { margin-top: 6px; }
+      .guide-section code, .guide-section pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 12px; }
+      .guide-section code { padding: 1px 5px; background: #efede7; }
+      .guide-section pre { margin: 12px 0 0; padding: 14px 16px; overflow-x: auto; border: 1px solid var(--line); background: #f3f1ec; line-height: 1.7; }
+      .guide-section pre code { padding: 0; background: none; }
+      .guide-section td { vertical-align: top; }
+      .guide-summary .summary-item p:last-child { margin-top: 6px; }
+      .guide-summary .step { font-family: Georgia, "Times New Roman", serif; font-size: 13px; color: var(--accent); }
+      .flow { list-style: none; margin: 16px 0 0; padding: 0; counter-reset: flow; }
+      .flow li { display: grid; grid-template-columns: 36px 140px minmax(0, 1fr); gap: 4px 14px; align-items: baseline; padding: 14px 4px; border-bottom: 1px solid var(--line); counter-increment: flow; }
+      .flow li:first-child { border-top: 1px solid var(--rule); }
+      .flow li::before { content: counter(flow, decimal-leading-zero); font-family: Georgia, "Times New Roman", serif; color: var(--accent); }
+      .flow strong { font-size: 14px; }
+      .guide-details { margin-top: 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+      .guide-details > summary { padding: 12px 4px; cursor: pointer; font-size: 13px; font-weight: 700; }
+      .guide-details > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .guide-details > div { padding: 0 4px 18px; }
+      .guide-footer { margin-top: 72px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 12px; }
+      @media (max-width: 720px) {
+        .flow li { grid-template-columns: 30px minmax(0, 1fr); }
+        .flow li > span { grid-column: 2; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="wordmark" href="{{ url_for('dashboard') }}" aria-label="Rookies Team 8 대시보드 홈">ROOKIES <span>·</span> TEAM 8</a>
+        <nav class="navigation" aria-label="대시보드 탐색">
+          <a class="navigation-link" href="{{ url_for('dashboard') }}">대시보드</a>
+          <a class="navigation-link" href="{{ url_for('security_advisories') }}">보안 공지</a>
+          <a class="navigation-link" href="{{ url_for('advisory_dashboard') }}">공지 분석</a>
+          <a class="navigation-link" href="{{ url_for('run_status') }}">실행 상태</a>
+          <a class="navigation-link" href="{{ url_for('analysis_results') }}">분석 결과</a>
+          <a class="navigation-link" href="{{ url_for('evidence.evidence_page') }}">취약 근거</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="dashboard detail-page" id="main-content" tabindex="-1">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SECURITY ADVISORY DASHBOARD</p>
+          <h1>사용 안내</h1>
+          <p class="description">GitHub 보안 공지를 수집해 Notion에 저장하고, 서비스에서 사용 중인 패키지 버전과 비교해 취약도를 확인하는 대시보드입니다.</p>
+        </div>
+        <div class="report-label" aria-hidden="true">
+          <span>GUIDE</span>
+          <p>수집 → 분석 → 결과 확인</p>
+        </div>
+      </header>
+
+      <nav class="guide-toc" aria-label="안내 목차">
+        <a href="#flow">사용 흐름</a>
+        <a href="#screens">화면 구성</a>
+        <a href="#sync">공지 수집</a>
+        <a href="#analysis">취약도 분석</a>
+        <a href="#statistics">공지 통계 · 데이터 갱신</a>
+        <a href="#slack">Slack 알림</a>
+        <a href="#setup">실행 · 설정</a>
+      </nav>
+
+      {# 1. 한눈에 보기 #}
+      <section class="summary-grid dashboard-summary guide-summary" aria-label="주요 기능">
+        <article class="summary-item">
+          <p class="step">01</p>
+          <h2>공지 수집</h2>
+          <p class="muted">GitHub Security Advisories에서 기간별 공지를 가져와 Notion에 저장합니다.</p>
+        </article>
+        <article class="summary-item">
+          <p class="step">02</p>
+          <h2>취약도 분석</h2>
+          <p class="muted">저장된 공지와 서비스 패키지의 이름 · 생태계 · 버전을 비교합니다.</p>
+        </article>
+        <article class="summary-item">
+          <p class="step">03</p>
+          <h2>결과 확인</h2>
+          <p class="muted">분석 결과, 공지 통계, 취약 근거를 화면에서 조회합니다.</p>
+        </article>
+        <article class="summary-item">
+          <p class="step">04</p>
+          <h2>알림</h2>
+          <p class="muted">작업 완료와 오류를 Slack 채널로 알려줍니다.</p>
+        </article>
+      </section>
+
+      {# 2. 사용 흐름 #}
+      <section class="guide-section" aria-labelledby="flow">
+        <div class="section-header">
+          <h2 id="flow">사용 흐름</h2>
+        </div>
+        <ol class="flow">
+          <li><strong>신규 공지 가져오기</strong><span>대시보드 또는 보안 공지 화면에서 기간을 정하고 실행합니다. GitHub 수집 → 중복 확인 → Notion 저장 순서로 진행됩니다.</span></li>
+          <li><strong>분석 실행</strong><span>실행 상태 화면에서 실행합니다. Notion에 저장된 전체 공지와 서비스 패키지를 비교해 취약도를 Notion에 반영합니다.</span></li>
+          <li><strong>결과 확인</strong><span>분석 결과 · 공지 분석 · 취약 근거 화면에서 판정 결과와 근거를 확인합니다.</span></li>
+        </ol>
+      </section>
+
+      {# 3. 화면 구성 #}
+      <section class="guide-section" aria-labelledby="screens">
+        <div class="section-header">
+          <h2 id="screens">화면 구성</h2>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">메뉴</th><th scope="col">주요 내용</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><a href="{{ url_for('dashboard') }}">대시보드</a></td><td>공지 · 서비스 · 패키지 요약과 공지 통계, 신규 공지 가져오기</td></tr>
+              <tr><td><a href="{{ url_for('security_advisories') }}">보안 공지</a></td><td>저장된 공지, 패키지별 취약 버전 범위, 게시일 · 갱신일, 신규 공지 가져오기</td></tr>
+              <tr><td><a href="{{ url_for('advisory_dashboard') }}">공지 분석</a></td><td>심각도 · 생태계 · 게시 추이 · 패키지별 통계와 기간 필터</td></tr>
+              <tr><td><a href="{{ url_for('run_status') }}">실행 상태</a></td><td>분석 실행, 진행 단계, 최근 실행 기록</td></tr>
+              <tr><td><a href="{{ url_for('analysis_results') }}">분석 결과</a></td><td>서비스 패키지별 저장된 취약도와 심각도 필터</td></tr>
+              <tr><td><a href="{{ url_for('evidence.evidence_page') }}">취약 근거</a></td><td>일치한 공지, 판정 불가 사유, 현재 비교 결과와 저장값의 차이 (읽기 전용)</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {# 4. 공지 수집 #}
+      <section class="guide-section" aria-labelledby="sync">
+        <div class="section-header">
+          <h2 id="sync">공지 수집</h2>
+        </div>
+        <p>시작일 · 종료일을 지정하고 <strong>신규 공지 가져오기</strong>를 누르면 수집이 시작됩니다. 화면을 이동해도 작업은 계속됩니다.</p>
+        <ul>
+          <li>기간은 GitHub <strong>게시일(UTC)</strong> 기준이며 양 끝 날짜를 포함합니다. 기본값은 오늘을 포함한 최근 7일입니다.</li>
+          <li>해당 기간의 공지를 갱신일 내림차순으로 <strong>최대 100건</strong> 가져옵니다.</li>
+          <li>진행 중에는 수집 · 중복 확인 · 저장 단계와 수집 · 제외 · 저장 · 실패 건수를 표시합니다.</li>
+          <li>GitHub 요청 실패와 "정상 응답 0건"을 구분해 표시합니다. 일부 저장에 실패하면 같은 기간으로 다시 실행할 수 있습니다.</li>
+          <li>수집이 끝나면 패키지 취약도 판정은 이어서 <strong>분석 실행</strong>으로 진행합니다.</li>
+        </ul>
+
+        <h3>Notion 중복 확인 기준</h3>
+        <p>이미 저장된 공지는 <code>(id, published_at)</code>을 키로 찾습니다. 같은 기간을 여러 번 수집해도 중복 행이 생기지 않습니다.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">Notion 상태</th><th scope="col">처리</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>같은 공지가 없음</td><td>새 행으로 저장</td></tr>
+              <tr><td>같은 공지가 있고 <code>updated_at</code>도 같음</td><td>이미 저장된 공지로 보고 제외</td></tr>
+              <tr><td>같은 공지가 있고 <code>updated_at</code>이 다름</td><td>GitHub에서 갱신된 공지로 보고 기존 행을 수정</td></tr>
+              <tr><td>같은 공지가 여러 행으로 저장되어 있음</td><td>한 행만 남기고 나머지는 Notion 휴지통으로 이동</td></tr>
+              <tr><td>공지 ID가 없음</td><td>식별할 수 없어 제외</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top: 10px;">Notion 조회에 실패하면 중복 적재를 막기 위해 저장을 진행하지 않습니다. Notion은 롤백을 지원하지 않으므로, 도중에 실패해도 이미 저장된 행은 유지됩니다.</p>
+      </section>
+
+      {# 5. 취약도 분석 #}
+      <section class="guide-section" aria-labelledby="analysis">
+        <div class="section-header">
+          <h2 id="analysis">취약도 분석</h2>
+        </div>
+        <p><strong>분석 실행</strong>은 Notion에 저장된 전체 공지와 서비스 패키지를 비교하고, 판정한 취약도를 Notion에 저장합니다. 진행 중에는 조회 → 판정 → 저장 단계와 저장 건수를 확인할 수 있으며, 실행 중 다시 요청하면 기존 작업 상태를 보여줍니다.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">판정 상황</th><th scope="col">저장 방식</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>취약점이 여러 개 일치</td><td><code>critical &gt; high &gt; medium &gt; low</code> 중 가장 높은 값을 패키지별로 한 번 저장</td></tr>
+              <tr><td>버전 · 범위를 비교할 수 없음</td><td>확인된 취약점이 없으면 <code>unknown</code>(알 수 없음)으로 저장</td></tr>
+              <tr><td>확인된 취약점과 판정 불가 공지가 함께 있음</td><td>확인된 최고 심각도 유지</td></tr>
+              <tr><td>모든 비교가 불일치</td><td>기존 값을 자동으로 <code>safe</code>로 되돌리지 않음</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <ul>
+          <li>버전 비교는 숫자와 점으로 된 버전(<code>1.2.3</code>)과 쉼표로 연결한 비교 조건(<code>&gt;= 1.0, &lt; 2.0</code>)을 지원합니다.</li>
+          <li>분석 결과는 필터를 적용한 뒤 <strong>50개씩</strong> 표시합니다. 필터: <code>all</code>, <code>critical</code>, <code>high</code>, <code>medium</code>, <code>low</code>, <code>safe</code>, <code>unknown</code></li>
+          <li><strong>취약 근거</strong> 화면은 저장된 데이터를 다시 비교해 근거만 보여주며, Notion 데이터를 수정하지 않습니다.</li>
+        </ul>
+      </section>
+
+      {# 6. 공지 통계와 데이터 갱신 #}
+      <section class="guide-section" aria-labelledby="statistics">
+        <div class="section-header">
+          <h2 id="statistics">공지 통계 · 데이터 갱신</h2>
+        </div>
+        <p><strong>공지 분석</strong>은 저장된 공지의 심각도 분포, 생태계별 공지 수, 게시 추이, 공지가 많은 패키지 상위 10개를 보여줍니다. 기간은 게시일(UTC) 기준이며 비워두면 전체 기간입니다.</p>
+        <p>조회한 데이터는 서버에서 <strong>60초간 재사용</strong>합니다. 이후 접속하면 기존 데이터를 먼저 보여주고 백그라운드에서 갱신합니다. <strong>최신 데이터 새로고침</strong>은 Notion 데이터를 다시 읽는 기능이며, GitHub 수집은 하지 않습니다.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">화면 상태</th><th scope="col">동작</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>처음 불러오는 중</td><td>로딩 안내를 표시하고 준비되면 자동으로 다시 표시</td></tr>
+              <tr><td>기존 데이터 갱신 중</td><td>마지막으로 성공한 결과를 먼저 표시</td></tr>
+              <tr><td>최신 조회 실패</td><td>이전 데이터를 유지하고 실패 안내와 데이터 확인 시각 표시</td></tr>
+              <tr><td>조회할 수 없는 값</td><td><code>—</code>로 표시해 실제 빈 데이터와 구분</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {# 7. Slack 알림 #}
+      <section class="guide-section" aria-labelledby="slack">
+        <div class="section-header">
+          <h2 id="slack">Slack 알림</h2>
+        </div>
+        <p><code>SLACK_WEBHOOK_URL</code>에 연결된 채널로 알림을 보냅니다. 같은 오류는 한 번만 알리고, 토큰 · 웹훅 등 비밀 값은 가려서 전송합니다.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">상황</th><th scope="col">알림 내용</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>공지 수집 · Notion 적재 완료</td><td>기간, 수집 · 생성 · 수정 · 제외 · 실패 건수와 실패 사유(최대 5건)</td></tr>
+              <tr><td>취약도 분석 · Notion 반영 완료</td><td>분석 범위, 공지 · 검사 패키지 · 취약점 일치 · 영향 패키지 · 판정 불가 건수</td></tr>
+              <tr><td>작업 오류</td><td>GitHub 수집 실패, Notion 연결 · 조회 · 저장 실패, 설정 로딩 오류</td></tr>
+              <tr><td>웹 · 서버 오류</td><td>처리되지 않은 예외, HTTP 5xx, 백그라운드 작업 예외</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted" style="margin-top: 10px;">GitHub 요청이 일시적으로 실패해 재시도하는 동안에는 알림을 보내지 않고, 최종 실패만 알립니다.</p>
+      </section>
+
+      {# 8. 실행과 설정 #}
+      <section class="guide-section" aria-labelledby="setup">
+        <div class="section-header">
+          <h2 id="setup">실행 · 설정</h2>
+        </div>
+        <p>Python 3.10 이상이 필요합니다. 프로젝트 루트에서 의존성을 설치하고 <code>.env</code>를 준비한 뒤 대시보드를 실행합니다.</p>
+        <pre><code>python -m pip install -r requirements.txt
+python -m flask --app source.web.app run</code></pre>
+        <p style="margin-top: 10px;">실행 후 <code>http://127.0.0.1:5000</code>에 접속합니다. 서버를 시작하는 것만으로는 공지 수집이나 분석이 실행되지 않습니다.</p>
+
+        <details class="guide-details">
+          <summary>환경변수 (.env)</summary>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr><th scope="col">환경변수</th><th scope="col">용도</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="mono">GITHUB_TOKEN</td><td>GitHub API 인증 (설정 시 요청 제한 완화)</td></tr>
+                <tr><td class="mono">NOTION_TOKEN</td><td>Notion 조회 · 저장 인증</td></tr>
+                <tr><td class="mono">NOTION_ADVISORIES_DATA_SOURCE_ID</td><td>보안 공지 데이터 소스</td></tr>
+                <tr><td class="mono">NOTION_SERVICE_DATA_SOURCE_ID</td><td>관리 서비스 데이터 소스</td></tr>
+                <tr><td class="mono">NOTION_SERVICE_PACKAGE_DATA_SOURCE_ID</td><td>서비스 패키지 · 취약도 데이터 소스</td></tr>
+                <tr><td class="mono">SLACK_WEBHOOK_URL</td><td>작업 · 오류 알림을 받을 Slack 웹훅</td></tr>
+                <tr><td class="mono">NOTION_PARENT_PAGE_ID</td><td>Notion 데이터베이스를 만들 부모 페이지</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="muted" style="margin-top: 10px;">Notion 조회에는 데이터베이스 ID가 아닌 <strong>데이터 소스 ID</strong>를 사용합니다. <code>.env</code>는 Git에 올리지 않습니다.</p>
+        </details>
+
+        <details class="guide-details">
+          <summary>운영 시 참고 사항</summary>
+          <div>
+            <ul>
+              <li>수집 · 분석 상태와 최근 실행 기록은 서버 메모리에 보관합니다. 현재 구조는 단일 서버 프로세스용입니다.</li>
+              <li>서버를 재시작하면 진행 중인 작업이 중단되고 실행 기록이 초기화됩니다. Notion에 이미 저장된 데이터는 유지됩니다.</li>
+              <li>Notion 요청은 최소 0.5초 간격으로 보내고, 일시적인 오류는 최대 3회까지 다시 시도합니다.</li>
+            </ul>
+          </div>
+        </details>
+      </section>
+
+      <footer class="guide-footer muted">
+        <p>SK Shieldus Rookies Mini Project · Python Team 8 · 김기현 · 노유성 · 엄동규 · 이시원 · 조성현</p>
+        <p>Python · Flask · Jinja2 · GitHub Security Advisories API · Notion API · Slack Incoming Webhook</p>
+      </footer>
+    </main>
+  </body>
+</html>

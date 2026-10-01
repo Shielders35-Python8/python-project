@@ -400,6 +400,10 @@ def create_app(config=None) -> Flask:
     from source.web.evidence import evidence_bp
     app.register_blueprint(evidence_bp)
 
+    @app.get("/guide")
+    def guide():
+        return render_template("guide.html")
+
     return app
 
 
