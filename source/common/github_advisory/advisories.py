@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 # 폴더 경로는 main 기준
 from source.config.config import get_config
 from source.common.slack.notifications import report_error
-from source.common.slack.slack import send_task_message
 
 # Config, env 등 전역으로 선언하여 프로젝트 로드 시에만 수집
 load_dotenv()
@@ -182,10 +181,7 @@ def get_advisories(dates=None, *, raise_on_error=False):
         # 호출 양식 확인용 json 파일 제작, 필요 시에만 주석 해제
         # make_response_json(return_advisories)
 
-        send_task_message(
-            f"GitHub 보안 공지 수집이 완료되었습니다. 수집 {len(return_advisories)}건.",
-            task_name="GitHub 수집",
-        )
+        # 수집 완료 알림은 sync_advisories_to_notion 에서 적재 결과와 함께 전송
 
     except Exception as e:
         print("get advisories server error > get_advisories > ", e)
