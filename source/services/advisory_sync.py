@@ -1,5 +1,8 @@
 # source/services/advisory_sync.py
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from functools import partial
+
+from notion_client.helpers import iterate_paginated_api
 
 from source.common.github_advisory.advisories import get_advisories
 from source.common.notion.notion import NotionClient
@@ -25,105 +28,125 @@ def _parse_datetime(value) -> datetime | None:
     return parsed.astimezone(timezone.utc).replace(second=0, microsecond=0)
 
 
+def _query_rows_by_ids(notion: NotionClient, data_source_id: str, ids: list[str]) -> list[dict]:
+    """Notion advisories 데이터 소스에서 id 컬럼이 ids 중 하나와 같은 행만 조회
+
+    notion.py 의 get_database_rows 는 날짜 조건만 지원하므로, 같은 클라이언트와 요청 정책(query_policy)을
+    그대로 사용해 id 조건으로 직접 조회한다.
+
+    Return: list({"id", "published_at", "updated_at", "page_id"})
+    """
+    def text(prop):
+        return "".join(item.get("plain_text", "") for item in (prop or {}).get("rich_text") or [])
+
+    def date(prop):
+        value = (prop or {}).get("date")
+        return value.get("start") if isinstance(value, dict) else None
+
+    query_page = notion.client.data_sources.query
+    if getattr(notion, "query_policy", None) is not None:
+        query_page = partial(notion.query_policy.call, query_page)
+
+    rows = []
+    # Notion compound filter 조건 개수 제한을 고려해 100 개씩 나누어 조회
+    for i in range(0, len(ids), 100):
+        id_filter = {"or": [{"property": "id", "rich_text": {"equals": ghsa_id}} for ghsa_id in ids[i:i + 100]]}
+        for page in iterate_paginated_api(query_page, data_source_id=data_source_id, filter=id_filter, page_size=100):
+            properties = page.get("properties") or {}
+            rows.append({
+                "id": text(properties.get("id")),
+                "published_at": date(properties.get("published_at")),
+                "updated_at": date(properties.get("updated_at")),
+                "page_id": page.get("id"),
+            })
+    return rows
+
+
 def _filter_exist_advisories(
     notion: NotionClient, data_source_id: str, advisories: list[dict]
 ) -> tuple[list[dict], list[tuple[str, dict]]]:
-    """Notion 에 이미 있는 advisory 를 id 를 키로 찾아 생성/수정 대상으로 분류
-    - published_at 은 수정되지 않는 값으로, 필터링 조건을 줄이기 위해 조회 조건으로 추가
+    """Notion 에 이미 있는 advisory 를 id 로 찾아 생성/수정 대상으로 분류
 
     - id 가 같은 행이 없으면 → 생성 대상
-    - 같은 행이 있고 updated_at 도 같으면 → 제외 (이미 적재됨)
-    - 같은 행이 있고 updated_at 이 다르면 → 수정 대상 (GitHub 에서 갱신된 공지)
+    - id 가 같은 행이 있고 published_at, updated_at 도 같으면 → 제외 (이미 적재됨)
+    - id 가 같은 행이 있고 published_at 이나 updated_at 이 다르거나 비어 있으면 → 기존 행 수정
+    - id 가 같은 행이 여러 개면(기존 중복) 하나만 남기고 나머지는 삭제. 남길 행 우선순위:
+        1. published_at, updated_at 이 GitHub 과 모두 같은 행
+        2. published_at, updated_at 이 모두 채워진 행
+        3. 그 외 (조회 순서상 첫 행)
+      삭제 순서: published_at/updated_at 이 비어 있거나 다른 행 → id/published_at/updated_at 이 모두 같은 행
     - id 가 없는 advisory 는 식별/적재할 수 없으므로 제외
     - Notion 조회 실패 시 예외를 그대로 전달 (중복 적재 방지)
-    - 같은 키의 행이 여러 개면(기존 중복) 하나의 행만 사용하고 나머지 행은 삭제
 
     Return: (to_create(list(dict)), to_update(list((page_id, advisory))))
     """
     if not advisories:
         return [], []
 
-    # 1. 비교 가능한 advisory 만 추리고, 조회 범위로 쓸 published_at 수집
-    valid_advisories = []
-    published_list = []
+    # 1. 비교 가능한 advisory 만 추림 (같은 id 가 여러 번 오면 첫 번째만 사용)
+    valid_advisories = {}
     for advisory in advisories:
         if not isinstance(advisory, dict) or not advisory.get("id"):
             print("id 없는 advisory 제외 > _filter_exist_advisories > ", advisory)
             continue
-        valid_advisories.append(advisory)
+        valid_advisories.setdefault(advisory["id"], advisory)
 
-        published_at = _parse_datetime(advisory.get("published_at"))
-        if published_at:
-            published_list.append(published_at)
+    if not valid_advisories:
+        return [], []
 
-    # published_at 이 하나도 없으면 Notion 조회 범위를 정할 수 없으므로 전부 생성 대상
-    if not published_list:
-        return valid_advisories, []
-
-    # 2. Notion published_at 컬럼 기준으로 범위 조회
-    #    경계/시간대 해석 차이로 누락되지 않도록 앞뒤 하루씩 여유를 두고, 정확한 비교는 아래에서 한다
-    started_at = (min(published_list) - timedelta(days=1)).strftime("%Y-%m-%d")
-    ended_at = (max(published_list) + timedelta(days=1)).strftime("%Y-%m-%d")
-    rows = notion.get_database_rows(
-        data_source_id=data_source_id,
-        date_column="published_at",
-        started_at=started_at,
-        ended_at=ended_at,
-    ) or []
-
-    # 3. Notion 에 이미 있는 (id, published_at) → 행 정보
-    #    published_at 이 빈 행은 위 범위 조회에서 이미 빠지고, id 가 빈 행은 여기서 제외
-    #    Notion DB는 RDBMS와 달리 id 기반의 효율적인 대량 조회 및 고유성 제약에 한계가 있고, 
-    #    전체 조회 시 API 호출 비용과 처리 시간이 증가함
-    #    따라서 짧은 프로젝트 기간과 운영 부하를 고려하여 
-    #    일반적으로 변경되지 않는 published_at을 보조 조회 조건으로 사용해 조회 범위를 제한 
-    #    향후 저장소를 RDBMS로 전환할 경우 id에 인덱스 및 UNIQUE 제약을 적용하고 published_at 조건은 제거할 수 있다.
-    #    이번 조회 대상 키만 다루며, 같은 키의 행이 여러 개면 첫 번째 행만 사용하고 나머지는 삭제 대상
-    target_keys = {
-        (advisory["id"], _parse_datetime(advisory.get("published_at")))
-        for advisory in valid_advisories
-    }
-    exist = {}
-    duplicate_rows = []
+    # 2. Notion 에서 이번 수집 결과의 id 와 같은 행만 조회
+    rows = _query_rows_by_ids(notion, data_source_id, list(valid_advisories))
+    rows_by_id = {}
     for row in rows:
-        if not isinstance(row, dict):
-            continue
-        notion_id = row.get("id")
-        notion_published_at = _parse_datetime(row.get("published_at"))
-        page_id = row.get("page_id")
-        if not notion_id or not notion_published_at or not page_id:
-            continue
+        if row.get("id") in valid_advisories and row.get("page_id"):
+            rows_by_id.setdefault(row["id"], []).append(row)
 
-        key = (notion_id, notion_published_at)
-        if key not in target_keys:
-            continue
-        if key in exist:
-            duplicate_rows.append((notion_id, page_id))
-        else:
-            exist[key] = row
+    def is_same(row, advisory):
+        """published_at, updated_at 이 모두 GitHub 값과 같은지 (비어 있으면 다름)"""
+        row_published = _parse_datetime(row.get("published_at"))
+        row_updated = _parse_datetime(row.get("updated_at"))
+        return (
+            row_published is not None and row_updated is not None
+            and row_published == _parse_datetime(advisory.get("published_at"))
+            and row_updated == _parse_datetime(advisory.get("updated_at"))
+        )
+
+    def keep_rank(row, advisory):
+        """남길 행 우선순위 (작을수록 우선)"""
+        if is_same(row, advisory):
+            return 0
+        if _parse_datetime(row.get("published_at")) and _parse_datetime(row.get("updated_at")):
+            return 1
+        return 2
+
+    # 3. id 별로 남길 행 하나를 고르고, 나머지는 삭제 대상
+    keep = {}
+    duplicate_rows = []
+    for ghsa_id, id_rows in rows_by_id.items():
+        advisory = valid_advisories[ghsa_id]
+        # sorted 는 안정 정렬이라 같은 우선순위면 조회 순서상 첫 행이 남는다
+        ordered = sorted(id_rows, key=lambda row: keep_rank(row, advisory))
+        keep[ghsa_id] = ordered[0]
+        duplicate_rows.extend((row, advisory) for row in ordered[1:])
 
     # 4. 기존 중복 행 삭제 (Notion 휴지통으로 이동), 실패해도 분류/적재는 계속 진행
+    #    비어 있거나 다른 행을 먼저, 값이 모두 같은 행을 나중에 삭제
+    duplicate_rows.sort(key=lambda item: is_same(*item))
     deleted = 0
-    for notion_id, page_id in duplicate_rows:
+    for row, _ in duplicate_rows:
         try:
-            notion.delete_database_row(page_id)
+            notion.delete_database_row(row["page_id"])
             deleted += 1
         except Exception as e:
-            print(f"notion 중복 행 삭제 실패 > _filter_exist_advisories > {notion_id} ({page_id}) > ", e)
+            print(f"notion 중복 행 삭제 실패 > _filter_exist_advisories > {row.get('id')} ({row['page_id']}) > ", e)
 
     # 5. 생성 / 수정 / 제외 분류
     to_create, to_update = [], []
-    for advisory in valid_advisories:
-        key = (advisory["id"], _parse_datetime(advisory.get("published_at")))
-        row = exist.get(key)
+    for ghsa_id, advisory in valid_advisories.items():
+        row = keep.get(ghsa_id)
         if row is None:
             to_create.append(advisory)
-            continue
-
-        github_updated_at = _parse_datetime(advisory.get("updated_at"))
-        notion_updated_at = _parse_datetime(row.get("updated_at"))
-        # GitHub 쪽 updated_at 이 없으면 갱신 여부를 알 수 없으므로 제외
-        if github_updated_at and github_updated_at != notion_updated_at:
+        elif not is_same(row, advisory):
             to_update.append((row["page_id"], advisory))
 
     skipped = len(advisories) - len(to_create) - len(to_update)
