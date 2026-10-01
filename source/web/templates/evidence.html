@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#faf9f6">
+    <title>취약 근거 · ROOKIES</title>
+    {% if loading %}<meta http-equiv="refresh" content="3">{% endif %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <style>
+      .evidence-summary .metric { font-size: clamp(40px, 5vw, 66px); }
+      .risk-list { list-style: none; margin: 0; padding: 0; }
+      .risk-list li + li { margin-top: 14px; }
+      .risk-list a { display: block; text-decoration: none; }
+      .risk-list a:hover .risk-name, .risk-list a[aria-current] .risk-name { color: var(--accent); }
+      .risk-list .bar-track { display: flex; height: 10px; }
+      .risk-counts { display: flex; flex-wrap: wrap; gap: 4px 12px; justify-content: flex-end; }
+      .risk-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 16px; font-size: 11px; }
+      .risk-legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .risk-legend i { display: inline-block; width: 10px; height: 10px; }
+      .evidence-search { display: flex; gap: 8px; margin: 0 0 10px; }
+      .evidence-search input { flex: 1; min-width: 0; min-height: 38px; padding: 7px 12px; border: 1px solid var(--line); font: inherit; font-size: 13px; }
+      .evidence-search button { min-height: 38px; padding: 7px 18px; border: 1px solid var(--ink); font: inherit; font-size: 12px; cursor: pointer; }
+      .active-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin: 0 0 8px; }
+      .evidence-item { border-bottom: 1px solid var(--line); }
+      .evidence-list { border-top: 1px solid var(--rule); margin-top: 14px; }
+      .evidence-item > summary { display: grid; grid-template-columns: 14px 92px minmax(0, 1fr) auto; align-items: center; gap: 6px 14px; padding: 16px 4px; cursor: pointer; list-style: none; }
+      .evidence-item > summary::-webkit-details-marker { display: none; }
+      .evidence-item > summary::before { content: "▸"; color: var(--muted); }
+      .evidence-item[open] > summary::before { content: "▾"; }
+      .evidence-item > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+      .evidence-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; min-width: 0; }
+      .evidence-title .package-name { font-weight: 700; overflow-wrap: anywhere; }
+      .evidence-meta { text-align: right; font-size: 11px; white-space: nowrap; }
+      .evidence-body { padding: 0 4px 22px 34px; }
+      .evidence-body h3 { font-size: 13px; margin: 16px 0 8px; }
+      .evidence-body table { min-width: 720px; }
+      .evidence-body td { vertical-align: top; }
+      .evidence-body td a { overflow-wrap: anywhere; }
+      .evidence-body .advisory-title { margin-top: 3px; line-height: 1.5; }
+      .evidence-body .nowrap { white-space: nowrap; }
+      .evidence-body .advisory-cell { min-width: 260px; }
+      .detail-page .evidence-section { margin-top: 56px; }
+      .section-note { margin: -8px 0 16px; }
+      @media (max-width: 720px) {
+        .evidence-item > summary { grid-template-columns: 14px 80px minmax(0, 1fr); }
+        .evidence-meta { grid-column: 2 / -1; text-align: left; white-space: normal; }
+        .evidence-body { padding-left: 4px; }
+        .evidence-search button { padding: 7px 12px; }
+      }
+    </style>
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="site-header">
+      <div class="header-inner">
+        <a class="wordmark" href="{{ url_for('dashboard') }}" aria-label="Rookies Team 8 대시보드 홈">ROOKIES <span>·</span> TEAM 8</a>
+        <nav class="navigation" aria-label="대시보드 탐색">
+          <a class="navigation-link" href="{{ url_for('dashboard') }}">대시보드</a>
+          <a class="navigation-link" href="{{ url_for('security_advisories') }}">보안 공지</a>
+          <a class="navigation-link" href="{{ url_for('advisory_dashboard') }}">공지 분석</a>
+          <a class="navigation-link" href="{{ url_for('run_status') }}">실행 상태</a>
+          <a class="navigation-link" href="{{ url_for('analysis_results') }}">분석 결과</a>
+          <a class="navigation-link is-current" href="{{ url_for('evidence.evidence_page') }}" aria-current="page">취약 근거</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="dashboard detail-page" id="main-content" tabindex="-1">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">SECURITY ADVISORY DASHBOARD</p>
+          <h1>취약 근거</h1>
+          <p class="description">패키지가 어떤 보안 공지 때문에 취약으로 판정됐는지 확인합니다. Notion은 읽기만 합니다.</p>
+        </div>
+        <div class="report-label" aria-hidden="true">
+          <span>EVIDENCE</span>
+          <p>서비스 → 패키지 → 공지</p>
+        </div>
+      </header>
+
+      {% if loading %}
+      <section class="analysis-empty" aria-busy="true" role="status">
+        <strong>{{ 'Notion 데이터를 불러오지 못했습니다.' if failed else 'Notion 데이터를 불러오는 중입니다.' }}</strong>
+        <p>3초마다 자동으로 다시 확인합니다. {% if failed %}계속 실패하면 서버 로그를 확인해 주세요.{% endif %}</p>
+      </section>
+      {% else %}
+
+      <div class="data-notice" role="status">
+        {% if stale %}<span>최신 데이터를 확인하는 중이거나 갱신에 실패해 마지막으로 불러온 데이터를 표시합니다.</span>{% else %}<span class="muted">최근에 불러온 데이터를 표시하고 있습니다.</span>{% endif %}
+        <span class="muted"> · 데이터 확인 {{ updated_at or '—' }} (KST)</span>
+        <a class="refresh-link" href="{{ url_for('evidence.evidence_page', **link(refresh=1, page=page if page > 1 else none)) }}">최신 데이터 새로고침</a>
+      </div>
+
+      {# 1. 요약 #}
+      <section class="summary-grid dashboard-summary evidence-summary" aria-label="취약 근거 요약">
+        <article class="summary-item">
+          <h2>근거 있는 취약 패키지</h2>
+          <p class="metric">{{ summary.affected }}</p>
+          <p class="muted">critical {{ summary.counts.critical }} · high {{ summary.counts.high }} · medium {{ summary.counts.medium }} · low {{ summary.counts.low }}</p>
+        </article>
+        <article class="summary-item">
+          <h2>일치한 공지</h2>
+          <p class="metric">{{ summary.matched_total }}</p>
+          <p class="muted">패키지 × 공지 일치 건수</p>
+        </article>
+        <article class="summary-item">
+          <h2>판정 불가</h2>
+          <p class="metric">{{ summary.counts.unknown }}</p>
+          <p class="muted">버전 표기를 비교할 수 없는 패키지</p>
+        </article>
+        <article class="summary-item">
+          <h2>저장값과 다름</h2>
+          <p class="metric">{{ summary.mismatch }}</p>
+          <p class="muted">Notion 저장값 ≠ 현재 근거 판정</p>
+        </article>
+      </section>
+
+      {# 2. 서비스별 위험 #}
+      {% if summary.services %}
+      <section class="results-section evidence-section" aria-labelledby="risk-heading">
+        <div class="section-header">
+          <h2 id="risk-heading">서비스별 위험</h2>
+        </div>
+        <p class="muted section-note">critical 개수가 많은 순, 같으면 high → medium → low 순으로 정렬했습니다. 막대를 누르면 그 서비스의 패키지만 봅니다.</p>
+        <p class="risk-legend" aria-hidden="true">
+          {% for level in levels %}<span><i class="severity-fill-{{ level }}"></i>{{ level }}</span>{% endfor %}
+          <span><i class="severity-fill-unknown"></i>판정 불가</span>
+        </p>
+        <ol class="risk-list">
+          {% for s in summary.services %}
+          <li>
+            <a href="{{ url_for('evidence.evidence_page', **link(service=s.id if s.id != service else none)) }}#evidence"{% if s.id == service %} aria-current="true"{% endif %}>
+              <div class="bar-caption">
+                <span><span class="mono">{{ s.id or '—' }}</span> <span class="risk-name">{{ s.name }}</span></span>
+                <span class="risk-counts">
+                  {% for level in levels if s[level] %}<span class="severity-label severity-{{ level }}">{{ level }} {{ s[level] }}</span>{% endfor %}
+                  {% if s.unknown %}<span class="muted">판정 불가 {{ s.unknown }}</span>{% endif %}
+                </span>
+              </div>
+              <div class="bar-track" role="img" aria-label="{{ s.name }}: {% for seg in s.segments %}{{ seg.level }} {{ seg.count }}개{% if not loop.last %}, {% endif %}{% endfor %}">
+                {% for seg in s.segments %}<div class="bar-fill severity-fill-{{ seg.level }}" style="width: {{ seg.width }}%"></div>{% endfor %}
+              </div>
+            </a>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endif %}
+
+      {# 3. 패키지별 근거 #}
+      <section class="results-section evidence-section" id="evidence" aria-labelledby="evidence-heading">
+        <div class="section-header">
+          <h2 id="evidence-heading">패키지별 근거</h2>
+          <p class="muted">패키지 {{ package_count }}개 기준</p>
+        </div>
+
+        <nav class="severity-filters" aria-label="보기 선택">
+          {% for key, label in views.items() %}
+          <a class="severity-filter{% if view == key %} is-selected{% endif %}" href="{{ url_for('evidence.evidence_page', **link(view=key)) }}#evidence"{% if view == key %} aria-current="true"{% endif %}>{{ label }} <span>{{ counts[key] }}</span></a>
+          {% endfor %}
+        </nav>
+
+        <form class="evidence-search" method="get" action="{{ url_for('evidence.evidence_page') }}#evidence" role="search">
+          <input type="hidden" name="view" value="{{ view }}">
+          {% if service %}<input type="hidden" name="service" value="{{ service }}">{% endif %}
+          <label class="sr-only" for="q">패키지명, 패키지 ID 또는 CVE·GHSA 검색</label>
+          <input id="q" name="q" type="search" value="{{ query }}" placeholder="패키지명 · PKG ID · CVE · GHSA (예: oauth, CVE-2026)" maxlength="100">
+          <button type="submit">검색</button>
+        </form>
+
+        <div class="active-filter" role="status">
+          <span class="muted">{{ views[view] }} · {{ total }}개{% if total %} 중 {{ start + 1 }}–{{ start + rows|length }}{% endif %}</span>
+          {% if service %}<a class="refresh-link" href="{{ url_for('evidence.evidence_page', **link(service=none)) }}#evidence">서비스: {{ service }} {{ service_name }} ✕</a>{% endif %}
+          {% if query %}<a class="refresh-link" href="{{ url_for('evidence.evidence_page', **link(q=none)) }}#evidence">검색: "{{ query }}" ✕</a>{% endif %}
+        </div>
+
+        <div class="evidence-list">
+        {% for row in rows %}
+          <details class="evidence-item"{% if loop.first and page == 1 and row.matched %} open{% endif %}>
+            <summary>
+              <span>
+                {% if row.computed in levels %}<span class="result-badge is-affected">{{ row.computed }}</span>
+                {% elif row.computed == 'unknown' %}<span class="result-badge is-pending">판정 불가</span>
+                {% else %}<span class="result-badge is-unaffected">safe</span>{% endif %}
+              </span>
+              <span class="evidence-title">
+                <span class="package-name">{{ row.package_name or '이름 미설정' }}</span>
+                <span class="mono">{{ row.installed_version or '버전 없음' }}</span>
+                <span class="muted">{{ row.ecosystem or '—' }} · {{ row.package_id or '—' }}</span>
+                <span class="muted">{% for s in row.services %}{{ s.id or '—' }} {{ s.name }}{% if not loop.last %}, {% endif %}{% else %}서비스 미연결{% endfor %}</span>
+              </span>
+              <span class="evidence-meta muted">
+                일치 {{ row.matched|length }} · 판정 불가 {{ row.unknown|length }}{% if row.mismatch %} · <strong class="severity-label">저장값 {{ row.stored }}</strong>{% endif %}
+              </span>
+            </summary>
+
+            <div class="evidence-body">
+              {% if row.mismatch %}
+              <p class="data-notice">
+                Notion 저장값({{ row.stored }})과 현재 근거 판정({{ row.computed if row.computed != 'unknown' else '판정 불가' }})이 다릅니다.
+                {% if row.mismatch_fixable %}분석을 다시 실행하면 근거 판정으로 저장됩니다.
+                {% else %}분석은 일치·판정 불가만 저장하고 safe로 되돌리지 않으므로, 재분석으로는 바뀌지 않습니다.{% endif %}
+              </p>
+              {% endif %}
+
+              {% if row.matched %}
+              <h3>일치한 공지 {{ row.matched|length }}건 — 설치 버전 <span class="mono">{{ row.installed_version }}</span> 이 취약 범위에 포함</h3>
+              <div class="table-wrapper" role="region" tabindex="0" aria-label="{{ row.package_name }} 일치한 공지">
+                <table>
+                  <thead><tr><th scope="col">심각도</th><th scope="col">공지</th><th scope="col">CVE</th><th scope="col">취약 범위</th><th scope="col">범위를 벗어나는 버전 (추정)</th><th scope="col">게시일</th></tr></thead>
+                  <tbody>
+                    {% for a in row.matched %}
+                    <tr>
+                      <td class="nowrap"><span class="severity-label severity-{{ a.severity }}">{{ a.severity }}</span></td>
+                      <td class="advisory-cell">{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">{{ a.id }}</a>{% else %}<span class="mono">{{ a.id }}</span>{% endif %}
+                        {% if a.title %}<div class="muted advisory-title">{{ a.title }}</div>{% endif %}</td>
+                      <td class="mono nowrap">{{ a.cve_id or '—' }}</td>
+                      <td class="mono nowrap">{{ a.range or '—' }}</td>
+                      <td class="mono nowrap">{{ a.hint or '—' }}</td>
+                      <td class="mono nowrap">{{ a.published or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+
+              {% if row.unknown %}
+              <h3>판정 불가 공지 {{ row.unknown|length }}건 — 버전 표기를 비교할 수 없음</h3>
+              <div class="table-wrapper" role="region" tabindex="0" aria-label="{{ row.package_name }} 판정 불가 공지">
+                <table>
+                  <thead><tr><th scope="col">심각도</th><th scope="col">공지</th><th scope="col">CVE</th><th scope="col">취약 범위</th><th scope="col">비교 불가 원인</th><th scope="col">게시일</th></tr></thead>
+                  <tbody>
+                    {% for a in row.unknown %}
+                    <tr>
+                      <td class="nowrap"><span class="severity-label severity-{{ a.severity }}">{{ a.severity }}</span></td>
+                      <td class="advisory-cell">{% if a.url %}<a href="{{ a.url }}" target="_blank" rel="noopener noreferrer">{{ a.id }}</a>{% else %}<span class="mono">{{ a.id }}</span>{% endif %}
+                        {% if a.title %}<div class="muted advisory-title">{{ a.title }}</div>{% endif %}</td>
+                      <td class="mono nowrap">{{ a.cve_id or '—' }}</td>
+                      <td class="mono nowrap">{{ a.range or '—' }}</td>
+                      <td class="nowrap">{{ a.reason }}</td>
+                      <td class="mono nowrap">{{ a.published or '—' }}</td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+              {% endif %}
+
+              {% if not row.matched and not row.unknown %}
+              <p class="muted">{% if row.candidate_count %}이름이 같은 공지 {{ row.candidate_count }}건이 있지만, 설치 버전이 모두 취약 범위 밖입니다.{% else %}이 패키지와 생태계·이름이 같은 공지가 없습니다.{% endif %}</p>
+              {% endif %}
+            </div>
+          </details>
+        {% else %}
+          <div class="analysis-empty">
+            <strong>해당하는 패키지가 없습니다.</strong>
+            <p>다른 보기를 선택하거나 검색어·서비스 필터를 해제해 주세요.</p>
+          </div>
+        {% endfor %}
+        </div>
+
+        {% if page_count > 1 %}
+        <nav class="pagination" aria-label="패키지 근거 페이지">
+          <p class="muted">{{ page }} / {{ page_count }}페이지</p>
+          <div>
+            {% if page > 1 %}<a class="refresh-link" href="{{ url_for('evidence.evidence_page', **link(page=page - 1 if page > 2 else none)) }}#evidence">이전</a>{% endif %}
+            {% if page < page_count %}<a class="refresh-link" href="{{ url_for('evidence.evidence_page', **link(page=page + 1)) }}#evidence">다음</a>{% endif %}
+          </div>
+        </nav>
+        {% endif %}
+
+        <aside class="analysis-note" aria-label="판정 기준 안내">
+          <div class="note-label"><strong>기준</strong></div>
+          <div>
+            <p>판정 규칙은 분석 버튼(processor.py)과 같은 함수를 사용합니다. 생태계·패키지명이 같은 공지 중 설치 버전이 취약 범위에 들어가면 '일치', 버전 표기를 비교할 수 없으면 '판정 불가'입니다.</p>
+            <p class="muted">'범위를 벗어나는 버전'은 공지의 취약 범위 상한으로 계산한 추정값입니다. 패치 버전 정보는 수집하지 않으며, 해당 버전이 다른 공지 범위에 들어갈 수 있으므로 '안전한 버전'을 뜻하지 않습니다.</p>
+          </div>
+        </aside>
+      </section>
+      {% endif %}
+
+      <footer class="page-footer">
+        <p>SK SHIELDUS ROOKIES <span>·</span> PYTHON TEAM 8</p>
+        <p>보안 공지 수집 및 서비스 영향 분석</p>
+      </footer>
+    </main>
+  </body>
+</html>

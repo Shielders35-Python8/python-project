@@ -396,6 +396,10 @@ def create_app(config=None) -> Flask:
     def advisory_sync_status():
         return jsonify(**sync_runs.snapshot())
 
+    # 취약 근거 화면 (읽기 전용) — source/web/evidence.py
+    from source.web.evidence import evidence_bp
+    app.register_blueprint(evidence_bp)
+
     return app
 
 
