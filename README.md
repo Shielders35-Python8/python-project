@@ -105,12 +105,6 @@ macOS / Linux / Git Bash에서는 `cp .env.example .env`를 사용합니다.
 | `SLACK_WEBHOOK_URL` | 작업·오류 알림을 받을 Slack 웹훅 |
 | `NOTION_PARENT_PAGE_ID` | Notion 데이터베이스를 생성할 때 사용할 부모 페이지 ID |
 
-서비스 관련 두 항목은 현재 `.env.example`에 없으므로 **대시보드 사용 시 `.env`에 직접 추가**합니다.
-
-```dotenv
-NOTION_SERVICE_DATA_SOURCE_ID=서비스_데이터_소스_ID
-NOTION_SERVICE_PACKAGE_DATA_SOURCE_ID=서비스_패키지_데이터_소스_ID
-```
 
 Notion 조회에는 **데이터 소스 ID**를 사용합니다. 데이터베이스 ID와 구분해 입력하고, 대상 데이터에 연동이 접근할 수 있도록 설정합니다. 데이터 구조는 [스키마 정의](source/databases/schemas/)를 참고하세요. `.env`는 Git에서 제외됩니다.
 
