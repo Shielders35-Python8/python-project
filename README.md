@@ -457,5 +457,8 @@ git push origin main
 ## 참고 자료
 
 - [GitHub REST API · Global Security Advisories](https://docs.github.com/en/rest/security-advisories/global-advisories)
+- [Notion API · Property object](https://developers.notion.com/reference/property-object)
+- [Notion API · Request limits](https://developers.notion.com/reference/request-limits)
 - [Flask · Quickstart](https://flask.palletsprojects.com/en/stable/quickstart/)
 - [Slack · Incoming Webhooks](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/)
+- [univers · 생태계별 버전 비교 라이브러리](https://github.com/aboutcode-org/univers)
