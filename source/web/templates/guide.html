@@ -128,6 +128,7 @@
         <a href="#judge">③ 취약도 분석</a>
         <a href="#screens">④ 시각화</a>
         <a href="#reliability">⑤ 안정성 · 알림</a>
+        <a href="#insights">인사이트</a>
         <a href="#appendix">부록</a>
       </nav>
 
@@ -645,10 +646,31 @@ create_database(parent_page_id, title, properties, is_inline=False)</code></pre>
         </details>
       </section>
 
-      <!-- 11. 부록 -->
+      <!-- 11. 인사이트 -->
+      <section class="guide-section" aria-labelledby="insights">
+        <div class="section-header">
+          <h2 id="insights"><span class="section-no">11</span>인사이트</h2>
+        </div>
+        <p class="summary-box"><span class="summary-label">요약</span><strong>수집 → 판정 → 근거 제공</strong> 과정을 통해 도출한 프로젝트 도입 효과입니다. 검토가 필요한 패키지를 선별하고, 판정의 정확도를 높이며, 조치 대상을 근거와 함께 명확히 제시할 수 있음을 확인했습니다.</p>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th scope="col">도입 효과</th><th scope="col">내용</th><th scope="col">근거 수치</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>검토 범위 축소</strong></td><td>전체 서비스 패키지를 일일이 점검하지 않고, 취약 범위에 해당하는 패키지만 조치 대상으로 선별합니다.</td><td>500개 중 148개(29.6%) 선별<br>검토 범위 약 70% 축소</td></tr>
+              <tr><td><strong>판정 정확도 향상</strong></td><td>생태계별 버전 비교 규칙을 적용하여, SemVer만으로 비교할 수 없던 패키지까지 판정할 수 있게 되었습니다.</td><td>판정 불가 81개 해소</td></tr>
+              <tr><td><strong>조치 대상 압축 · 근거 제시</strong></td><td>여러 공지가 일치한 패키지도 최고 심각도 1건으로 정리하고, 원인 공지와 취약 범위를 근거로 함께 제시하여 패치 우선순위를 바로 판단할 수 있습니다.</td><td>공지 일치 498건 → 조치 대상 148개</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted note">인사이트 수치는 시연 환경의 분석 결과(공지 4,589건 · 서비스 패키지 500개) 기준이며, 서비스 패키지는 시연용 데이터입니다.</p>
+      </section>
+
+      <!-- 12. 부록 -->
       <section class="guide-section" aria-labelledby="appendix">
         <div class="section-header">
-          <h2 id="appendix"><span class="section-no">11</span>부록</h2>
+          <h2 id="appendix"><span class="section-no">12</span>부록</h2>
         </div>
 
         <details class="guide-details">
